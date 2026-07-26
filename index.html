@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Treak — Find your first job.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ================= TOAST / NOTIFICATION LAYER ================= -->
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+<!-- ================= NAVIGATION ================= -->
+<header class="nav" id="mainNav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo" data-nav="landing">
+      <span class="logo-mark">T</span>
+      <span class="logo-word">Treak<span class="logo-dot">.</span></span>
+    </a>
+
+    <nav class="nav-links" id="navLinks">
+      <a href="#home" class="nav-link">Home</a>
+      <a href="#jobs" class="nav-link">Jobs</a>
+      <a href="#companies" class="nav-link">Companies</a>
+      <a href="#about" class="nav-link">About</a>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="btn-icon" id="notifBell" aria-label="Notifications">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3C9.24 3 7 5.24 7 8v3.5L5 15v1h14v-1l-2-3.5V8c0-2.76-2.24-5-5-5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <span class="notif-dot" id="notifDot"></span>
+      </button>
+      <div class="notif-panel" id="notifPanel">
+        <div class="notif-panel-head">Notifications</div>
+        <div class="notif-list" id="notifList"></div>
+      </div>
+
+      <button class="btn btn-ghost" id="loginBtn">Login</button>
+      <button class="btn btn-primary" id="signupBtn">Sign Up</button>
+
+      <div class="account-menu hidden" id="accountMenu">
+        <button class="account-btn" id="accountBtn">
+          <span class="account-avatar" id="accountAvatar">A</span>
+          <span id="accountName">Alex</span>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 4.5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="account-dropdown" id="accountDropdown">
+          <button id="accountDashLink">Go to dashboard</button>
+          <button id="logoutBtn">Log out</button>
+        </div>
+      </div>
+
+      <button class="hamburger" id="hamburger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ================= LANDING VIEW ================= -->
+<main class="view active" id="view-landing">
+
+  <!-- HERO -->
+  <section class="hero" id="home">
+    <div class="hero-glow"></div>
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <div class="eyebrow reveal-up">
+          <span class="eyebrow-dot"></span> Built for your first job search
+        </div>
+        <h1 class="hero-title reveal-up delay-1">Find your<br><span class="text-gradient">first job.</span></h1>
+        <p class="hero-sub reveal-up delay-2">Treak helps teenagers discover nearby jobs from companies looking for young workers — no résumé needed, just one tap to apply.</p>
+        <div class="hero-actions reveal-up delay-3">
+          <button class="btn btn-primary btn-lg" id="heroGetStarted">Get Started
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <a href="#jobs" class="btn btn-secondary btn-lg">Browse Jobs</a>
+        </div>
+        <div class="hero-stats reveal-up delay-4">
+          <div class="hero-stat"><span class="counter" data-count="4200">0</span><small>teens hired</small></div>
+          <div class="hero-stat"><span class="counter" data-count="850">0</span><small>partner companies</small></div>
+          <div class="hero-stat"><span class="counter" data-count="96">0</span><small>%&nbsp;match rate</small></div>
+        </div>
+      </div>
+
+      <div class="hero-visual" id="heroVisual">
+        <div class="floating-card card-a">
+          <div class="fc-top"><div class="fc-logo" style="background:linear-gradient(135deg,#FFC72C,#DA291C)">M</div><span class="badge badge-live">Hiring now</span></div>
+          <p class="fc-title">Crew Member</p>
+          <p class="fc-sub">McDonald's · 0.6 km away</p>
+          <div class="fc-bottom"><span class="fc-wage">128 kr/hr</span><span class="fc-tag">Part Time</span></div>
+        </div>
+        <div class="floating-card card-b">
+          <div class="fc-top"><div class="fc-logo" style="background:linear-gradient(135deg,#4F46E5,#7C3AED)">L</div><span class="badge badge-live">Hiring now</span></div>
+          <p class="fc-title">Shelf Assistant</p>
+          <p class="fc-sub">Lidl · 1.2 km away</p>
+          <div class="fc-bottom"><span class="fc-wage">122 kr/hr</span><span class="fc-tag">Weekends</span></div>
+        </div>
+        <div class="floating-card card-c">
+          <div class="fc-top"><div class="fc-logo" style="background:linear-gradient(135deg,#22C55E,#0EA5A0)">7</div><span class="badge badge-live">Hiring now</span></div>
+          <p class="fc-title">Store Assistant</p>
+          <p class="fc-sub">7-Eleven · 0.9 km away</p>
+          <div class="fc-bottom"><span class="fc-wage">130 kr/hr</span><span class="fc-tag">Evenings</span></div>
+        </div>
+        <div class="orbit-ring"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOGO STRIP -->
+  <section class="logo-strip reveal-up">
+    <p class="logo-strip-label">Teens are getting hired at</p>
+    <div class="logo-strip-track" id="logoStrip"></div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section how-it-works" id="how">
+    <div class="section-head">
+      <span class="eyebrow eyebrow-static">How it works</span>
+      <h2 class="section-title">Your first job, in four steps</h2>
+      <p class="section-sub">No cover letters. No confusing forms. Just what actually matters.</p>
+    </div>
+    <div class="steps-grid">
+      <div class="step-card reveal-up">
+        <div class="step-index">01</div>
+        <div class="step-icon">👤</div>
+        <h3>Create your profile</h3>
+        <p>Add your age, location and availability — takes under two minutes.</p>
+      </div>
+      <div class="step-card reveal-up delay-1">
+        <div class="step-index">02</div>
+        <div class="step-icon">🎯</div>
+        <h3>Choose what interests you</h3>
+        <p>Pick job types — retail, food, delivery — and we'll match you to real openings.</p>
+      </div>
+      <div class="step-card reveal-up delay-2">
+        <div class="step-index">03</div>
+        <div class="step-icon">⚡</div>
+        <h3>Apply in one click</h3>
+        <p>No résumé required. Your profile is your application.</p>
+      </div>
+      <div class="step-card reveal-up delay-3">
+        <div class="step-index">04</div>
+        <div class="step-icon">🎉</div>
+        <h3>Get hired</h3>
+        <p>Chat directly with employers and book your first shift.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURED COMPANIES -->
+  <section class="section" id="companies">
+    <div class="section-head">
+      <span class="eyebrow eyebrow-static">Featured companies</span>
+      <h2 class="section-title">Companies hiring near you</h2>
+      <p class="section-sub">Local names teens already know, actively recruiting first-time workers.</p>
+    </div>
+    <div class="companies-grid" id="companiesGrid"></div>
+  </section>
+
+  <!-- HOT JOBS -->
+  <section class="section jobs-section" id="jobs">
+    <div class="section-head">
+      <span class="eyebrow eyebrow-static">Hot jobs</span>
+      <h2 class="section-title">Jobs near you, right now</h2>
+      <p class="section-sub">Filter by how you get there — everything updates live.</p>
+    </div>
+
+    <div class="jobs-toolbar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M14 14l-3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="text" id="jobSearch" placeholder="Search jobs or companies…">
+      </div>
+
+      <div class="filter-pills" id="modeFilters">
+        <button class="pill active" data-mode="all">All</button>
+        <button class="pill" data-mode="walk">🚶 Walking distance</button>
+        <button class="pill" data-mode="bike">🚴 Cycling distance</button>
+        <button class="pill" data-mode="transit">🚌 Public transport</button>
+      </div>
+
+      <div class="radius-wrap">
+        <label for="radiusSlider">Radius: <span id="radiusValue">20</span> km</label>
+        <input type="range" id="radiusSlider" min="0" max="20" value="20">
+      </div>
+    </div>
+
+    <div class="jobs-grid" id="jobsGrid"></div>
+    <p class="jobs-empty hidden" id="jobsEmpty">No jobs match your filters — try widening your radius.</p>
+    <div class="jobs-loadmore-wrap">
+      <button class="btn btn-secondary" id="loadMoreBtn">Show more jobs</button>
+    </div>
+  </section>
+
+  <!-- ABOUT / CTA -->
+  <section class="section about-cta" id="about">
+    <div class="about-card">
+      <h2>Your first paycheck is closer than you think.</h2>
+      <p>Treak is trusted by hundreds of local employers looking specifically for motivated young people. Join free — no experience needed.</p>
+      <div class="hero-actions">
+        <button class="btn btn-primary btn-lg" id="ctaGetStarted">Create your profile</button>
+        <button class="btn btn-secondary btn-lg" id="ctaCompany">I'm hiring →</button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <span class="logo-mark small">T</span>
+        <span class="logo-word">Treak<span class="logo-dot">.</span></span>
+      </div>
+      <p>© 2026 Treak. All rights reserved. Made for the next generation of workers.</p>
+    </div>
+  </footer>
+</main>
+
+<!-- ================= TEEN DASHBOARD VIEW ================= -->
+<main class="view" id="view-dashboard">
+  <div class="dash-shell">
+    <aside class="dash-sidebar">
+      <a href="#" class="nav-logo" data-nav="landing" style="margin-bottom:32px;">
+        <span class="logo-mark">T</span><span class="logo-word">Treak<span class="logo-dot">.</span></span>
+      </a>
+      <nav class="dash-nav">
+        <button class="dash-nav-item active" data-panel="overview">🏠 Overview</button>
+        <button class="dash-nav-item" data-panel="hot">🔥 Hot Jobs</button>
+        <button class="dash-nav-item" data-panel="recommended">✨ Recommended</button>
+        <button class="dash-nav-item" data-panel="saved">🔖 Saved jobs</button>
+        <button class="dash-nav-item" data-panel="applications">📄 Applications</button>
+        <button class="dash-nav-item" data-panel="interviews">🗓 Interviews</button>
+        <button class="dash-nav-item" data-panel="messages">💬 Messages</button>
+      </nav>
+      <button class="btn btn-secondary" style="margin-top:auto;width:100%;" data-nav="landing">← Back to site</button>
+    </aside>
+
+    <section class="dash-main">
+      <div class="dash-header">
+        <div>
+          <h1 id="dashGreeting">Good afternoon, Alex.</h1>
+          <p class="dash-subgreeting">You're 1 application away from your first interview 👀</p>
+        </div>
+        <div class="dash-avatar" id="dashAvatar">AJ</div>
+      </div>
+
+      <!-- Profile completion -->
+      <div class="glass-card profile-card">
+        <div class="profile-card-top">
+          <div>
+            <h3>Profile completion</h3>
+            <p class="muted">Finish your profile to unlock better matches.</p>
+          </div>
+          <span class="profile-percent" id="profilePercentLabel">80%</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="profileProgressFill" style="width:0%"></div></div>
+        <div class="profile-todo">
+          <span class="chip chip-done">✓ Basic info</span>
+          <span class="chip chip-done">✓ Availability</span>
+          <span class="chip chip-done">✓ Interests</span>
+          <span class="chip chip-pending">+ Add a profile photo</span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="dash-stats-grid">
+        <div class="glass-card stat-card">
+          <span class="stat-icon">📨</span>
+          <span class="counter" data-count="12">0</span>
+          <p>Applications sent</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">👁</span>
+          <span class="counter" data-count="34">0</span>
+          <p>Profile views</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🗓</span>
+          <span class="counter" data-count="2">0</span>
+          <p>Interviews booked</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🔖</span>
+          <span class="counter" data-count="7">0</span>
+          <p>Saved jobs</p>
+        </div>
+      </div>
+
+      <!-- Recommended jobs -->
+      <div class="dash-section">
+        <div class="dash-section-head"><h3>Recommended for you</h3><a class="link" data-nav="landing">See all →</a></div>
+        <div class="jobs-grid dash-jobs-grid" id="dashRecommended"></div>
+      </div>
+
+      <div class="dash-columns">
+        <div class="dash-section">
+          <div class="dash-section-head"><h3>Applications</h3></div>
+          <div class="application-list" id="dashApplications"></div>
+        </div>
+        <div class="dash-section">
+          <div class="dash-section-head"><h3>Upcoming interviews</h3></div>
+          <div class="interview-list" id="dashInterviews"></div>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="dash-section" id="teenMessagesSection">
+        <div class="dash-section-head"><h3>💬 Messages</h3></div>
+        <div class="chat-shell" id="teenChatShell">
+          <div class="chat-list" id="teenChatList"></div>
+          <div class="chat-thread" id="teenChatThread"></div>
+        </div>
+      </div>
+
+      <!-- Top 10 hottest jobs near you -->
+      <div class="dash-section hot-jobs-section" id="hotJobsSection">
+        <div class="dash-section-head">
+          <h3>🔥 Top 10 hottest jobs near you</h3>
+          <div class="hot-radius-control">
+            <span>Within <b id="hotRadiusLabel">5</b> km of home</span>
+            <input type="range" id="hotRadiusSlider" min="1" max="20" value="5">
+          </div>
+        </div>
+        <div class="hot-jobs-list" id="hotJobsList"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ================= COMPANY DASHBOARD VIEW ================= -->
+<main class="view" id="view-company">
+  <div class="dash-shell">
+    <aside class="dash-sidebar">
+      <a href="#" class="nav-logo" data-nav="landing" style="margin-bottom:32px;">
+        <span class="logo-mark">T</span><span class="logo-word">Treak<span class="logo-dot">.</span></span>
+      </a>
+      <nav class="dash-nav">
+        <button class="dash-nav-item active" data-cpanel="overview">📊 Overview</button>
+        <button class="dash-nav-item" data-cpanel="profile">🖼 Company profile</button>
+        <button class="dash-nav-item" data-cpanel="listings">📋 Manage listings</button>
+        <button class="dash-nav-item" data-cpanel="applicants">🧑‍🤝‍🧑 Applicants</button>
+        <button class="dash-nav-item" data-cpanel="messages">💬 Messages</button>
+      </nav>
+      <button class="btn btn-secondary" style="margin-top:auto;width:100%;" data-nav="landing">← Back to site</button>
+    </aside>
+
+    <section class="dash-main">
+      <div class="pending-banner hidden" id="companyPendingBanner">
+        <span class="pending-banner-icon">⏳</span>
+        <div>
+          <strong>Your company account is awaiting admin review.</strong>
+          <p>You can explore the dashboard, but job postings won't go live until an admin approves your account.</p>
+        </div>
+      </div>
+
+      <div class="dash-header">
+        <div>
+          <h1 id="companyGreeting">Welcome back, Netto ApS</h1>
+          <p class="dash-subgreeting" id="companySubgreeting">Here's how your listings are performing this week.</p>
+        </div>
+        <button class="btn btn-primary" id="postJobBtn">+ Post a job</button>
+      </div>
+
+      <div class="dash-section glass-card" id="companyProfileSection" style="padding:24px;">
+        <div class="dash-section-head"><h3>🖼 Company profile</h3></div>
+        <div class="company-profile-editor">
+          <div class="cp-logo-col">
+            <div class="cp-logo-preview" id="cpLogoPreview"></div>
+            <label class="btn btn-secondary cp-upload-btn">
+              Upload logo
+              <input type="file" id="cpLogoInput" accept="image/*" style="display:none;">
+            </label>
+            <p class="muted" style="font-size:11.5px;text-align:center;max-width:120px;">Square image works best</p>
+          </div>
+          <form class="auth-form cp-fields" id="companyProfileForm">
+            <label>Company name<input type="text" id="cpName" required></label>
+            <label>Category
+              <select id="cpCategory">
+                <option>Retail</option><option>Fast food</option><option>Convenience</option>
+                <option>Fitness</option><option>Entertainment</option><option>Hypermarket</option><option>Other</option>
+              </select>
+            </label>
+            <label>About your company<textarea id="cpBio" rows="3" placeholder="What makes your company a great first job? Shown to teens on your listings."></textarea></label>
+            <button type="submit" class="btn btn-primary" style="align-self:flex-start;">Save profile</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="dash-stats-grid">
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🧑‍🤝‍🧑</span>
+          <span class="counter" data-count="58">0</span>
+          <p>Total applicants</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">📋</span>
+          <span class="counter" data-count="6">0</span>
+          <p>Open positions</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🗓</span>
+          <span class="counter" data-count="9">0</span>
+          <p>Interviews scheduled</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">⭐</span>
+          <span class="counter" data-count="4">0</span>
+          <p>New today</p>
+        </div>
+      </div>
+
+      <div class="dash-columns">
+        <div class="dash-section" style="flex:1.4;">
+          <div class="dash-section-head"><h3>Recent applicants</h3></div>
+          <div class="applicant-table" id="applicantTable"></div>
+        </div>
+        <div class="dash-section">
+          <div class="dash-section-head"><h3>Recent activity</h3></div>
+          <div class="activity-list" id="activityList"></div>
+        </div>
+      </div>
+
+      <div class="dash-section" id="companyMessagesSection">
+        <div class="dash-section-head"><h3>💬 Messages</h3></div>
+        <div class="chat-shell" id="companyChatShell">
+          <div class="chat-list" id="companyChatList"></div>
+          <div class="chat-thread" id="companyChatThread"></div>
+        </div>
+      </div>
+
+      <div class="dash-section" id="companyListingsSection">
+        <div class="dash-section-head"><h3>Your listings</h3></div>
+        <div class="jobs-grid dash-jobs-grid" id="companyListings"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ================= ADMIN VIEW ================= -->
+<main class="view" id="view-admin">
+  <div class="dash-shell">
+    <aside class="dash-sidebar">
+      <a href="#" class="nav-logo" data-nav="landing" style="margin-bottom:32px;">
+        <span class="logo-mark">T</span><span class="logo-word">Treak<span class="logo-dot">.</span></span>
+      </a>
+      <nav class="dash-nav">
+        <button class="dash-nav-item active" data-apanel="companies">🏢 Pending companies</button>
+        <button class="dash-nav-item" data-apanel="allCompanies">🛠 Manage companies</button>
+        <button class="dash-nav-item" data-apanel="jobs">📋 Pending jobs</button>
+        <button class="dash-nav-item" data-apanel="all">🗂 All listings</button>
+      </nav>
+      <button class="btn btn-secondary" style="margin-top:auto;width:100%;" data-nav="landing">← Back to site</button>
+    </aside>
+
+    <section class="dash-main">
+      <div class="dash-header">
+        <div>
+          <h1>Admin review</h1>
+          <p class="dash-subgreeting">Keep Treak's marketplace safe — approve real companies and real jobs only.</p>
+        </div>
+        <span class="badge badge-verified">🛡 Admin mode</span>
+      </div>
+
+      <div class="dash-stats-grid">
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🏢</span>
+          <span class="counter" id="adminPendingCompaniesCount" data-count="0">0</span>
+          <p>Pending companies</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">📋</span>
+          <span class="counter" id="adminPendingJobsCount" data-count="0">0</span>
+          <p>Pending jobs</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">✅</span>
+          <span class="counter" id="adminApprovedCount" data-count="0">0</span>
+          <p>Approved companies</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🌐</span>
+          <span class="counter" id="adminLiveJobsCount" data-count="0">0</span>
+          <p>Live jobs</p>
+        </div>
+      </div>
+
+      <div class="dash-section" id="adminCompaniesSection">
+        <div class="dash-section-head"><h3>Pending company accounts</h3></div>
+        <div class="review-list" id="adminCompaniesList"></div>
+      </div>
+
+      <div class="dash-section" id="adminAllCompaniesSection">
+        <div class="dash-section-head">
+          <h3>🛠 Manage companies</h3>
+          <p class="muted" style="font-size:13px;">Toggle any company's status — Approved lets them post jobs, Verified is a trust badge, Featured highlights them on the homepage. All independent, all reversible.</p>
+        </div>
+        <div class="review-list" id="adminAllCompaniesList"></div>
+      </div>
+
+      <div class="dash-section" id="adminJobsSection">
+        <div class="dash-section-head"><h3>Pending job listings</h3></div>
+        <div class="review-list" id="adminJobsList"></div>
+      </div>
+
+      <div class="dash-section" id="adminAllSection">
+        <div class="dash-section-head"><h3>All listings</h3></div>
+        <div class="review-list" id="adminAllList"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- ================= JOB DETAIL MODAL ================= -->
+<div class="modal-overlay" id="jobModalOverlay">
+  <div class="modal job-modal">
+    <button class="modal-close" id="jobModalClose">✕</button>
+    <div id="jobModalContent"></div>
+  </div>
+</div>
+
+<!-- ================= POST A JOB MODAL ================= -->
+<div class="modal-overlay" id="postJobModalOverlay">
+  <div class="modal post-job-modal">
+    <button class="modal-close" id="postJobModalClose">✕</button>
+    <h2>Post a job</h2>
+    <p class="muted">Submitted listings are reviewed by an admin before they go live.</p>
+    <form class="auth-form" id="postJobForm">
+      <label>Job title<input type="text" id="pjTitle" placeholder="e.g. Cashier" required></label>
+      <div class="form-row">
+        <label>Hourly wage (kr)<input type="number" id="pjWage" min="100" max="200" placeholder="125" required></label>
+        <label>Minimum age<input type="number" id="pjAge" min="13" max="18" placeholder="16" required></label>
+      </div>
+      <div class="form-row">
+        <label>Job type (schedule)
+          <select id="pjType">
+            <option>Part Time</option><option>Weekends</option><option>Evenings</option><option>After School</option>
+          </select>
+        </label>
+        <label>Category (industry)
+          <select id="pjCategory">
+            <option>Restaurant</option><option>Supermarket</option><option>Retail</option><option>Convenience Store</option>
+            <option>Fitness</option><option>Entertainment</option><option>Delivery</option><option>Other</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-row">
+        <label>Distance mode
+          <select id="pjMode">
+            <option value="walk">🚶 Walking</option><option value="bike">🚴 Cycling</option><option value="transit">🚌 Transit</option>
+          </select>
+        </label>
+        <label>Applications close<input type="date" id="pjDeadline" required></label>
+      </div>
+      <label>Working hours<input type="text" id="pjHours" placeholder="e.g. 10-15 hrs/week" required></label>
+      <label>Location<input type="text" id="pjLocation" placeholder="e.g. Nørrebro, Copenhagen" required></label>
+      <label>Description<textarea id="pjDescription" rows="3" placeholder="What will they be doing?" required></textarea></label>
+      <label>Other info <span class="muted" style="font-weight:400;">(optional)</span><textarea id="pjNotes" rows="2" placeholder="Anything else worth knowing — uniform provided, meal included, etc."></textarea></label>
+      <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:8px;">Submit for review</button>
+    </form>
+  </div>
+</div>
+
+<!-- ================= LOGIN / SIGNUP MODAL ================= -->
+<div class="modal-overlay" id="authModalOverlay">
+  <div class="modal auth-modal">
+    <button class="modal-close" id="authModalClose">✕</button>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-authtab="teen">I'm looking for a job</button>
+      <button class="auth-tab" data-authtab="company">I'm hiring</button>
+    </div>
+    <h2 id="authTitle">Welcome back</h2>
+    <p class="muted" id="authSub">Log in to your account.</p>
+
+    <form class="auth-form" id="authForm">
+      <div id="authSignupFields" class="hidden">
+        <label id="teenNameField">Full name<input type="text" id="authName" placeholder="Alex Jensen"></label>
+        <label id="companyNameField" class="hidden">Company name<input type="text" id="authCompanyName" placeholder="Netto ApS"></label>
+        <div class="form-row" id="teenExtraFields">
+          <label>Age<input type="number" id="authAge" min="13" max="18" placeholder="16"></label>
+          <label>City<input type="text" id="authCity" placeholder="Copenhagen"></label>
+        </div>
+        <label id="companyCategoryField" class="hidden">Category
+          <select id="authCategory"><option>Retail</option><option>Fast food</option><option>Convenience</option><option>Fitness</option><option>Entertainment</option><option>Other</option></select>
+        </label>
+      </div>
+      <label>Email<input type="email" id="authEmail" placeholder="you@example.com" required></label>
+      <label>Password<input type="password" id="authPassword" placeholder="••••••••" required></label>
+      <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:8px;" id="authSubmitBtn">Log in</button>
+    </form>
+
+    <p class="auth-switch hidden" id="authCheckEmailMsg" style="color:var(--green);">📧 Check your email to confirm your account, then log in.</p>
+
+    <p class="auth-switch">
+      <span id="authToggleText">Don't have an account?</span>
+      <button type="button" class="link-btn" id="authToggleBtn">Sign up</button>
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+</body>
+</html>
