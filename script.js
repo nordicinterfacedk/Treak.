@@ -1272,8 +1272,8 @@ async function renderTeenChatThread(){
     <div class="chat-thread-input"><input type="text" id="teenChatInput" placeholder="Message ${co.name}…"><button id="teenChatSend">➤</button></div>`;
   await loadAndRenderMessages(chat.id, $('#teenChatMessages'), currentUser().id);
   subscribeToChat(chat.id, $('#teenChatMessages'), currentUser().id);
-  $('#teenChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#teenChatInput')));
-  $('#teenChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#teenChatInput')); });
+  $('#teenChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#teenChatInput'), $('#teenChatMessages')));
+  $('#teenChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#teenChatInput'), $('#teenChatMessages')); });
 }
 
 async function renderCompanyChatList(){
@@ -1318,8 +1318,8 @@ async function renderCompanyChatThread(){
     <div class="chat-thread-input"><input type="text" id="companyChatInput" placeholder="Message ${other.name}…"><button id="companyChatSend">➤</button></div>`;
   await loadAndRenderMessages(chat.id, $('#companyChatMessages'), currentUser().id);
   subscribeToChat(chat.id, $('#companyChatMessages'), currentUser().id);
-  $('#companyChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#companyChatInput')));
-  $('#companyChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#companyChatInput')); });
+  $('#companyChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#companyChatInput'), $('#companyChatMessages')));
+  $('#companyChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#companyChatInput'), $('#companyChatMessages')); });
 }
 
 async function loadAndRenderMessages(chatId, container, myId){
@@ -1334,28 +1334,38 @@ function renderChatBubbles(container, messages, myId){
   }).join('');
   container.scrollTop = container.scrollHeight;
 }
+function appendChatBubble(container, text, createdAt, mine){
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ${mine?'me':'them'}`;
+  bubble.innerHTML = `${text}<span class="chat-bubble-time">${new Date(createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>`;
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+}
 function subscribeToChat(chatId, container, myId){
   if(activeMessageChannel) supabase.removeChannel(activeMessageChannel);
   activeMessageChannel = supabase
     .channel(`messages-${chatId}`)
     .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`chat_id=eq.${chatId}` }, payload=>{
-      const bubble = document.createElement('div');
       const mine = payload.new.sender_id === myId;
-      bubble.className = `chat-bubble ${mine?'me':'them'}`;
-      bubble.innerHTML = `${payload.new.text}<span class="chat-bubble-time">${new Date(payload.new.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>`;
-      container.appendChild(bubble);
-      container.scrollTop = container.scrollHeight;
-      if(!mine) pushToast('💬','New message', payload.new.text);
+      // Your own messages are already shown instantly by sendChatMessage —
+      // only append here for messages coming FROM the other person, so
+      // conversations never depend solely on the realtime round-trip
+      // for your own side, and never show a duplicate bubble either.
+      if(mine) return;
+      appendChatBubble(container, payload.new.text, payload.new.created_at, false);
+      pushToast('💬','New message', payload.new.text);
     })
     .subscribe();
 }
-async function sendChatMessage(chatId, inputEl){
+async function sendChatMessage(chatId, inputEl, containerEl){
   const text = inputEl.value.trim();
   if(!text) return;
+  inputEl.value = '';
+  const now = new Date().toISOString();
+  if(containerEl) appendChatBubble(containerEl, text, now, true); // show it instantly, don't wait on the network round-trip
   const { error } = await supabase.from('messages').insert({ chat_id:chatId, sender_id:currentUser().id, text });
   logSupabaseError('sendChatMessage', error);
-  if(error){ pushToast('🚫','Message not sent', error.message); return; }
-  inputEl.value = '';
+  if(error){ pushToast('🚫','Message not sent', error.message); inputEl.value = text; if(containerEl && containerEl.lastElementChild) containerEl.lastElementChild.remove(); }
 }
 
 // ------------------------------------------------------------
@@ -1405,8 +1415,8 @@ async function renderAdminChatThread(){
     <div class="chat-thread-input"><input type="text" id="adminChatInput" placeholder="Message ${other?.name||''}…"><button id="adminChatSend">➤</button></div>`;
   await loadAndRenderMessages(chat.id, $('#adminChatMessages'), currentUser().id);
   subscribeToChat(chat.id, $('#adminChatMessages'), currentUser().id);
-  $('#adminChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#adminChatInput')));
-  $('#adminChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#adminChatInput')); });
+  $('#adminChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#adminChatInput'), $('#adminChatMessages')));
+  $('#adminChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#adminChatInput'), $('#adminChatMessages')); });
 }
 /* Called from the "💬 Chat" buttons next to any company or teen in the
    admin lists — finds an existing admin conversation with them, or
