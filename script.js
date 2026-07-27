@@ -75,6 +75,17 @@ async function refreshCurrentProfile(){
   if(!session){ currentProfile = null; return null; }
   const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
   if(error){ logSupabaseError('refreshCurrentProfile', error); currentProfile = null; return null; }
+  const isTimedOut = data.banned_until && new Date(data.banned_until) > new Date();
+  if(data.banned || isTimedOut){
+    await supabase.auth.signOut();
+    currentProfile = null;
+    if(data.banned){
+      pushToast('🚫','Account suspended', data.ban_reason || 'Contact support for details');
+    } else {
+      pushToast('⏱️','Account timed out', `${data.ban_reason ? data.ban_reason+' — ' : ''}until ${new Date(data.banned_until).toLocaleDateString()}`);
+    }
+    return null;
+  }
   currentProfile = data;
   return data;
 }
@@ -460,6 +471,20 @@ async function uploadProfilePhoto(file){
   return data?.publicUrl || null;
 }
 
+async function renderWarningsBanner(){
+  const existing = document.getElementById('userWarningsBanner');
+  if(existing) existing.remove();
+  const user = currentUser(); if(!user) return;
+  const { data: warningsList } = await supabase.from('warnings').select('*').eq('profile_id', user.id).order('created_at', {ascending:false});
+  if(!warningsList || !warningsList.length) return;
+  const banner = document.createElement('div');
+  banner.id = 'userWarningsBanner';
+  banner.className = 'warning-banner';
+  banner.innerHTML = `<span style="font-size:20px;">⚠️</span><div><strong>You have ${warningsList.length} warning${warningsList.length>1?'s':''} from the Treak team</strong><ul>${warningsList.slice(0,3).map(w=>`<li>${w.message} — ${daysAgo(w.created_at)}</li>`).join('')}</ul></div>`;
+  const mount = document.querySelector('.view.active .dash-main');
+  if(mount) mount.prepend(banner);
+}
+
 // ------------------------------------------------------------
 // 8. TEEN DASHBOARD
 // ------------------------------------------------------------
@@ -540,6 +565,7 @@ async function renderTeenDashboard(){
   attachJobCardEvents();
   await renderTeenChatList();
   await renderHotJobs();
+  await renderWarningsBanner();
 }
 
 $('#teenProfileForm').addEventListener('submit', async e=>{
@@ -642,6 +668,7 @@ async function renderCompanyDashboard(){
   $('#companyListings').innerHTML = jobs.length ? jobs.map(j=> companyJobCardHTML(j, apps.filter(a=>a.job_id===j.id).length)).join('') : `<p class="jobs-empty">You haven't posted any jobs yet.</p>`;
 
   await renderCompanyChatList();
+  await renderWarningsBanner();
 }
 function companyJobCardHTML(job, applicantCount){
   const statusMap = { pending:['status-pending','Pending review'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
@@ -803,7 +830,7 @@ async function renderAdmin(){
   $('#adminBannedCount').dataset.count = bannedCount;
 
   $('#adminCompaniesList').innerHTML = (pendingCompanies||[]).length ? pendingCompanies.map(c=>`
-    <div class="review-card">
+    <div class="review-card" data-view-company="${c.id}">
       ${logoBoxHTML(c)}
       <div class="review-card-info">
         <div class="review-card-title">${c.name}</div>
@@ -816,7 +843,7 @@ async function renderAdmin(){
     </div>`).join('') : `<p class="review-empty">No pending company accounts. 🎉</p>`;
 
   $('#adminAllCompaniesList').innerHTML = (allCompanies||[]).length ? allCompanies.map(c=>`
-    <div class="review-card">
+    <div class="review-card" data-view-company="${c.id}">
       ${logoBoxHTML(c)}
       <div class="review-card-info">
         <div class="review-card-title">${c.name}</div>
@@ -833,7 +860,7 @@ async function renderAdmin(){
     </div>`).join('') : `<p class="review-empty">No companies yet.</p>`;
 
   $('#adminTeensList').innerHTML = (allTeens||[]).length ? allTeens.map(t=>`
-    <div class="review-card">
+    <div class="review-card" data-view-teen="${t.id}">
       ${logoBoxHTML(t, null, "applicant-avatar")}
       <div class="review-card-info">
         <div class="review-card-title">${t.name}${t.age?`, ${t.age}`:''}</div>
@@ -848,7 +875,7 @@ async function renderAdmin(){
 
   $('#adminJobsList').innerHTML = (pendingJobs||[]).length ? pendingJobs.map(j=>{
     const c = j.company;
-    return `<div class="review-card">
+    return `<div class="review-card" data-view-job="${j.id}">
       ${logoBoxHTML(c)}
       <div class="review-card-info">
         <div class="review-card-title">${j.title} <span class="muted">· ${c.name}</span></div>
@@ -865,7 +892,7 @@ async function renderAdmin(){
     const c = j.company; if(!c) return '';
     const statusMap = { pending:['status-pending','Pending'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
     const [cls,label] = statusMap[j.status];
-    return `<div class="review-card">
+    return `<div class="review-card" data-view-job="${j.id}">
       ${logoBoxHTML(c)}
       <div class="review-card-info"><div class="review-card-title">${j.title} <span class="muted">· ${c.name}</span></div><div class="review-card-sub">${j.wage} kr/hr · ${j.location||''}</div></div>
       <span class="status-badge ${cls}">${label}</span>
@@ -873,16 +900,27 @@ async function renderAdmin(){
     </div>`;
   }).join('');
 
-  $$('[data-approve-co]').forEach(btn=> btn.addEventListener('click', ()=> reviewCompany(btn.dataset.approveCo, true)));
-  $$('[data-reject-co]').forEach(btn=> btn.addEventListener('click', ()=> reviewCompany(btn.dataset.rejectCo, false)));
-  $$('[data-approve-job]').forEach(btn=> btn.addEventListener('click', ()=> reviewJob(btn.dataset.approveJob, 'approved')));
-  $$('[data-reject-job]').forEach(btn=> btn.addEventListener('click', ()=> reviewJob(btn.dataset.rejectJob, 'rejected')));
-  $$('[data-toggle]').forEach(btn=> btn.addEventListener('click', ()=> toggleCompanyFlag(btn.dataset.id, btn.dataset.toggle, !btn.classList.contains('on'))));
-  $$('[data-ban]').forEach(btn=> btn.addEventListener('click', ()=> banUser(btn.dataset.ban, true)));
-  $$('[data-unban]').forEach(btn=> btn.addEventListener('click', ()=> banUser(btn.dataset.unban, false)));
-  $$('[data-delete-job]').forEach(btn=> btn.addEventListener('click', ()=> deleteJob(btn.dataset.deleteJob)));
-  $$('[data-admin-chat-company]').forEach(btn=> btn.addEventListener('click', ()=> openAdminChatWith(btn.dataset.adminChatCompany, 'company')));
-  $$('[data-admin-chat-teen]').forEach(btn=> btn.addEventListener('click', ()=> openAdminChatWith(btn.dataset.adminChatTeen, 'teen')));
+  // Whole card opens the detail modal; buttons inside stop that and do their own thing.
+  $$('.review-card[data-view-company]').forEach(card=>{
+    card.addEventListener('click', e=>{ if(e.target.closest('button')) return; openUserDetailModal(card.dataset.viewCompany, 'company'); });
+  });
+  $$('.review-card[data-view-teen]').forEach(card=>{
+    card.addEventListener('click', e=>{ if(e.target.closest('button')) return; openUserDetailModal(card.dataset.viewTeen, 'teen'); });
+  });
+  $$('.review-card[data-view-job]').forEach(card=>{
+    card.addEventListener('click', e=>{ if(e.target.closest('button')) return; openJobAdminModal(card.dataset.viewJob); });
+  });
+
+  $$('[data-approve-co]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); reviewCompany(btn.dataset.approveCo, true); }));
+  $$('[data-reject-co]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); reviewCompany(btn.dataset.rejectCo, false); }));
+  $$('[data-approve-job]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); reviewJob(btn.dataset.approveJob, 'approved'); }));
+  $$('[data-reject-job]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); reviewJob(btn.dataset.rejectJob, 'rejected'); }));
+  $$('[data-toggle]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); toggleCompanyFlag(btn.dataset.id, btn.dataset.toggle, !btn.classList.contains('on')); }));
+  $$('[data-ban]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); banUser(btn.dataset.ban, true); }));
+  $$('[data-unban]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); banUser(btn.dataset.unban, false); }));
+  $$('[data-delete-job]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); deleteJob(btn.dataset.deleteJob); }));
+  $$('[data-admin-chat-company]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); openAdminChatWith(btn.dataset.adminChatCompany, 'company'); }));
+  $$('[data-admin-chat-teen]').forEach(btn=> btn.addEventListener('click', e=>{ e.stopPropagation(); openAdminChatWith(btn.dataset.adminChatTeen, 'teen'); }));
 
   await renderAdminChatList();
   observeCounters();
@@ -918,11 +956,35 @@ async function banUser(id, ban){
     reason = window.prompt('Reason for banning this account (shown to them, and kept on record):');
     if(reason === null) return; // cancelled
   }
-  const { error } = await supabase.from('profiles').update({ banned: ban, ban_reason: ban ? reason : null }).eq('id', id);
+  const { error } = await supabase.from('profiles').update({ banned: ban, ban_reason: ban ? reason : null, banned_until: null }).eq('id', id);
   logSupabaseError('banUser', error);
   if(error){ pushToast('🚫','Update failed', error.message); return; }
   pushToast(ban?'🚫':'✅', ban?'Account banned':'Account unbanned', '');
   await renderAdmin();
+  closeModal('userDetailModalOverlay');
+}
+async function timeoutUser(id){
+  const daysStr = window.prompt('Timeout length in days (e.g. 3):', '3');
+  if(daysStr === null) return;
+  const days = Number(daysStr);
+  if(!days || days <= 0){ pushToast('🚫','Invalid number', 'Enter a positive number of days'); return; }
+  const reason = window.prompt('Reason for this timeout (shown to them):') || 'No reason given';
+  const until = new Date(Date.now() + days*86400000).toISOString();
+  const { error } = await supabase.from('profiles').update({ banned_until: until, ban_reason: reason }).eq('id', id);
+  logSupabaseError('timeoutUser', error);
+  if(error){ pushToast('🚫','Update failed', error.message); return; }
+  pushToast('⏱️','Timeout applied', `${days} day${days>1?'s':''}`);
+  await renderAdmin();
+  closeModal('userDetailModalOverlay');
+}
+async function warnUser(id){
+  const message = window.prompt('Warning message (the account will see this):');
+  if(!message) return;
+  const { error } = await supabase.from('warnings').insert({ profile_id:id, message, created_by: currentUser().id });
+  logSupabaseError('warnUser', error);
+  if(error){ pushToast('🚫','Could not send warning', error.message); return; }
+  pushToast('⚠️','Warning sent', '');
+  await openUserDetailModal(id, lastOpenedUserRole);
 }
 async function deleteJob(id){
   if(!window.confirm('Permanently delete this job listing? This cannot be undone.')) return;
@@ -931,7 +993,136 @@ async function deleteJob(id){
   if(error){ pushToast('🚫','Delete failed', error.message); return; }
   pushToast('🗑️','Job deleted', '');
   await renderAdmin();
+  closeModal('jobAdminModalOverlay');
 }
+
+/* ---------- Admin: user detail / moderation modal ---------- */
+let lastOpenedUserRole = 'company';
+async function openUserDetailModal(id, role){
+  lastOpenedUserRole = role;
+  const { data: p, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+  logSupabaseError('openUserDetailModal', error);
+  if(!p) return;
+
+  const { data: warningsList } = await supabase.from('warnings').select('*').eq('profile_id', id).order('created_at', {ascending:false});
+
+  let statsHTML = '';
+  if(role === 'company'){
+    const { data: jobs } = await supabase.from('jobs').select('id,status').eq('company_id', id);
+    const { data: apps } = await supabase.from('applications').select('id').eq('company_id', id);
+    const j = jobs || [];
+    statsHTML = `
+      <div class="jm-grid">
+        <div class="jm-stat"><label>Live jobs</label><p>${j.filter(x=>x.status==='approved').length}</p></div>
+        <div class="jm-stat"><label>Pending jobs</label><p>${j.filter(x=>x.status==='pending').length}</p></div>
+        <div class="jm-stat"><label>Total applicants</label><p>${(apps||[]).length}</p></div>
+        <div class="jm-stat"><label>Joined</label><p>${daysAgo(p.created_at)}</p></div>
+      </div>`;
+  } else {
+    const { data: apps } = await supabase.from('applications').select('id,status').eq('teen_id', id);
+    const { data: saved } = await supabase.from('saved_jobs').select('job_id').eq('teen_id', id);
+    const a = apps || [];
+    statsHTML = `
+      <div class="jm-grid">
+        <div class="jm-stat"><label>Applications</label><p>${a.length}</p></div>
+        <div class="jm-stat"><label>Accepted</label><p>${a.filter(x=>x.status==='accepted').length}</p></div>
+        <div class="jm-stat"><label>Saved jobs</label><p>${(saved||[]).length}</p></div>
+        <div class="jm-stat"><label>Joined</label><p>${daysAgo(p.created_at)}</p></div>
+      </div>`;
+  }
+
+  const isTimedOut = p.banned_until && new Date(p.banned_until) > new Date();
+  const statusLine = p.banned
+    ? `<span class="badge" style="background:rgba(240,68,56,0.14);color:#FCA5A5;">🚫 Banned${p.ban_reason ? ' — '+p.ban_reason : ''}</span>`
+    : isTimedOut
+      ? `<span class="badge" style="background:rgba(245,165,36,0.16);color:var(--amber);">⏱️ Timed out until ${new Date(p.banned_until).toLocaleDateString()}${p.ban_reason ? ' — '+p.ban_reason : ''}</span>`
+      : `<span class="badge badge-live">✔ Active account</span>`;
+
+  $('#userDetailModalContent').innerHTML = `
+    <div class="jm-head">${logoBoxHTML(p, 56, role==='company'?'company-logo':'applicant-avatar')}</div>
+    <h2 class="jm-title">${p.name}</h2>
+    <p class="jm-company">${p.email || ''}${role==='company' ? ' · '+(p.category||'') : (p.age?` · ${p.age} yrs old`:'')}${p.city?` · ${p.city}`:''}</p>
+    <div class="jm-badges">
+      ${role==='company' && p.verified ? `<span class="badge badge-verified">${VERIFIED_BADGE} Verified</span>` : ''}
+      ${role==='company' && p.featured ? '<span class="badge badge-featured">★ Featured</span>' : ''}
+      ${statusLine}
+    </div>
+    ${p.bio ? `<div class="jm-section"><h4>About</h4><p>${p.bio}</p></div>` : ''}
+    ${statsHTML}
+    ${(warningsList||[]).length ? `
+      <div class="jm-section"><h4>⚠️ Warning history</h4><ul>${warningsList.map(w=>`<li>${w.message} <span class="muted">— ${daysAgo(w.created_at)}</span></li>`).join('')}</ul></div>
+    ` : ''}
+    <div class="jm-actions-wrap">
+      ${role==='company' ? `<button class="btn btn-secondary" data-modal-toggle="approved">${p.approved?'✔ Approved':'Approve'}</button>` : ''}
+      ${role==='company' ? `<button class="btn btn-secondary" data-modal-toggle="verified">${p.verified?'✔ Verified':'Verify'}</button>` : ''}
+      ${role==='company' ? `<button class="btn btn-secondary" data-modal-toggle="featured">${p.featured?'★ Featured':'Feature'}</button>` : ''}
+      <button class="btn btn-secondary" id="modalWarnBtn">⚠️ Warn</button>
+      <button class="btn btn-secondary" id="modalTimeoutBtn">⏱️ Timeout</button>
+      ${p.banned ? `<button class="btn btn-secondary" id="modalUnbanBtn">✅ Unban</button>` : `<button class="btn btn-secondary" style="background:rgba(240,68,56,0.12);color:#FCA5A5;" id="modalBanBtn">🚫 Ban</button>`}
+      <button class="btn btn-primary" id="modalChatBtn">💬 Chat</button>
+    </div>
+  `;
+  $('#userDetailModalOverlay').classList.add('open');
+  $$('#userDetailModalContent [data-modal-toggle]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const field = btn.dataset.modalToggle;
+      await toggleCompanyFlag(p.id, field, !p[field]);
+      await openUserDetailModal(p.id, role);
+    });
+  });
+  $('#modalWarnBtn')?.addEventListener('click', ()=> warnUser(p.id));
+  $('#modalTimeoutBtn')?.addEventListener('click', ()=> timeoutUser(p.id));
+  $('#modalBanBtn')?.addEventListener('click', ()=> banUser(p.id, true));
+  $('#modalUnbanBtn')?.addEventListener('click', ()=> banUser(p.id, false));
+  $('#modalChatBtn')?.addEventListener('click', ()=>{ closeModal('userDetailModalOverlay'); openAdminChatWith(p.id, role); });
+}
+$('#userDetailModalClose').addEventListener('click', ()=>closeModal('userDetailModalOverlay'));
+$('#userDetailModalOverlay').addEventListener('click', e=>{ if(e.target.id==='userDetailModalOverlay') closeModal('userDetailModalOverlay'); });
+
+/* ---------- Admin: job detail / moderation modal ---------- */
+async function openJobAdminModal(jobId){
+  const { data: j, error } = await supabase.from('jobs').select('*, company:profiles!jobs_company_id_fkey(*)').eq('id', jobId).single();
+  logSupabaseError('openJobAdminModal', error);
+  if(!j) return;
+  const c = j.company;
+  const { data: apps } = await supabase.from('applications').select('id').eq('job_id', jobId);
+  const statusMap = { pending:['status-pending','Pending review'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
+  const [cls,label] = statusMap[j.status];
+
+  $('#jobAdminModalContent').innerHTML = `
+    <div class="jm-head">${logoBoxHTML(c, 48)}</div>
+    <h2 class="jm-title">${j.title}</h2>
+    <p class="jm-company">${c.name} · ${j.location||''}</p>
+    <div class="jm-badges"><span class="status-badge ${cls}">${label}</span><span class="badge badge-live">${(apps||[]).length} applicants</span></div>
+    <div class="jm-grid">
+      <div class="jm-stat"><label>Hourly wage</label><p style="color:var(--amber)">${j.wage} kr/hr</p></div>
+      <div class="jm-stat"><label>Category</label><p>${j.category||'—'}</p></div>
+      <div class="jm-stat"><label>Applications close</label><p>${j.deadline ? new Date(j.deadline).toLocaleDateString() : '—'}</p></div>
+      <div class="jm-stat"><label>Age requirement</label><p>${j.age_req}+</p></div>
+    </div>
+    <div class="jm-section"><h4>Description</h4><p>${j.description||''}</p></div>
+    ${j.notes ? `<div class="jm-section"><h4>Other info</h4><p>${j.notes}</p></div>` : ''}
+    <div class="jm-actions-wrap">
+      ${j.status!=='approved' ? `<button class="btn btn-secondary" id="jobModalApprove">✅ Approve</button>` : ''}
+      ${j.status!=='rejected' ? `<button class="btn btn-secondary" id="jobModalReject">🚫 Reject</button>` : ''}
+      <button class="btn btn-secondary" id="jobModalWarnCompany">⚠️ Warn company</button>
+      <button class="btn btn-secondary" style="background:rgba(240,68,56,0.12);color:#FCA5A5;" id="jobModalDelete">🗑️ Take down permanently</button>
+    </div>
+  `;
+  $('#jobAdminModalOverlay').classList.add('open');
+  $('#jobModalApprove')?.addEventListener('click', async ()=>{ await reviewJob(j.id,'approved'); closeModal('jobAdminModalOverlay'); });
+  $('#jobModalReject')?.addEventListener('click', async ()=>{ await reviewJob(j.id,'rejected'); closeModal('jobAdminModalOverlay'); });
+  $('#jobModalDelete')?.addEventListener('click', ()=> deleteJob(j.id));
+  $('#jobModalWarnCompany')?.addEventListener('click', async ()=>{
+    const message = window.prompt(`Warning message for ${c.name} about "${j.title}":`);
+    if(!message) return;
+    const { error: wErr } = await supabase.from('warnings').insert({ profile_id:c.id, message, created_by: currentUser().id });
+    if(wErr){ pushToast('🚫','Could not send warning', wErr.message); return; }
+    pushToast('⚠️','Warning sent', c.name);
+  });
+}
+$('#jobAdminModalClose').addEventListener('click', ()=>closeModal('jobAdminModalOverlay'));
+$('#jobAdminModalOverlay').addEventListener('click', e=>{ if(e.target.id==='jobAdminModalOverlay') closeModal('jobAdminModalOverlay'); });
 
 // ------------------------------------------------------------
 // 11. CHAT (with realtime updates)
