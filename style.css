@@ -269,7 +269,7 @@ button:focus-visible, input:focus-visible, a:focus-visible{
 /* Companies grid */
 .companies-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px; }
 .company-card{
-  background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); padding:22px;
+  background:var(--card); border:1px solid var(--border); border-radius:var(--radius-md); padding:22px; cursor:pointer;
   transition:transform .25s var(--ease), border-color .25s, box-shadow .25s;
 }
 .company-card:hover{ transform:translateY(-5px); border-color:var(--border-strong); box-shadow:0 16px 40px rgba(0,0,0,0.35); }
