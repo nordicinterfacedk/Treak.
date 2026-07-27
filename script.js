@@ -1240,7 +1240,7 @@ async function renderTeenChatList(){
     const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
     return { ...c, preview: last?.text || '' };
   }));
-  listEl.innerHTML = previews.length ? previews.map(c=>{
+  listEl.innerHTML = previews.length ? previews.filter(c=> c.company || c.admin).map(c=>{
     const other = c.company || c.admin;
     const label = c.admin ? `${other.name} <span class="muted" style="font-size:11px;">· Treak team</span>` : other.name;
     return `<div class="chat-list-item ${c.id===activeTeenChatId?'active':''}" data-chat-id="${c.id}">
@@ -1265,7 +1265,7 @@ async function openTeenChat(chatId){
 async function renderTeenChatThread(){
   const { data: chat } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeTeenChatId).single();
   if(!chat) return;
-  const co = chat.company || chat.admin;
+  const co = chat.company || chat.admin || { name:'Unknown', color:'var(--gradient)' };
   $('#teenChatThread').innerHTML = `
     <div class="chat-thread-header">${logoBoxHTML(co, null, "chat-list-avatar")}<div><div class="chat-list-name">${co.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
     <div class="chat-thread-messages" id="teenChatMessages"></div>
@@ -1286,7 +1286,7 @@ async function renderCompanyChatList(){
     const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
     return { ...c, preview: last?.text || '' };
   }));
-  listEl.innerHTML = previews.length ? previews.map(c=>{
+  listEl.innerHTML = previews.length ? previews.filter(c=> c.teen || c.admin).map(c=>{
     const other = c.teen || c.admin;
     const label = c.admin ? `${other.name} <span class="muted" style="font-size:11px;">· Treak team</span>` : other.name;
     return `<div class="chat-list-item ${c.id===activeCompanyChatId?'active':''}" data-chat-id="${c.id}">
@@ -1311,7 +1311,7 @@ async function openCompanyChat(chatId){
 async function renderCompanyChatThread(){
   const { data: chat } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeCompanyChatId).single();
   if(!chat) return;
-  const other = chat.teen || chat.admin;
+  const other = chat.teen || chat.admin || { name:'Unknown', color:'var(--gradient)' };
   $('#companyChatThread').innerHTML = `
     <div class="chat-thread-header">${logoBoxHTML(other, null, "chat-list-avatar")}<div><div class="chat-list-name">${other.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
     <div class="chat-thread-messages" id="companyChatMessages"></div>
