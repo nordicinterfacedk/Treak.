@@ -362,6 +362,12 @@ async function openJobModal(jobId){
   if(!job) return;
   const c = job.company;
   const user = currentUser();
+  // Count this as a real view — but not when the job's own company (or
+  // an admin reviewing it) opens it, since that would inflate the stats
+  // with the company checking their own listing rather than real interest.
+  if(!user || (user.role!=='company' && user.role!=='admin')){
+    supabase.rpc('increment_job_views', { job_id: jobId }).then(({error})=> logSupabaseError('increment_job_views', error));
+  }
   const isSaved = mySavedJobIds.has(job.id);
   let alreadyApplied = false;
   if(user && user.role==='teen'){
@@ -704,6 +710,8 @@ async function renderCompanyDashboard(){
 function companyJobCardHTML(job, applicantCount){
   const statusMap = { pending:['status-pending','Pending review'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
   const [cls,label] = statusMap[job.status];
+  const views = job.views || 0;
+  const conversion = views>0 ? Math.round((applicantCount/views)*100) : 0;
   return `
   <div class="job-card" data-manage-job="${job.id}">
     <div class="job-card-top">
@@ -715,9 +723,14 @@ function companyJobCardHTML(job, applicantCount){
       <span class="tag">${job.type}</span>
       <span class="tag">Age ${job.age_req}+</span>
     </div>
+    <div class="job-analytics-row">
+      <span title="Views">👁 ${views}</span>
+      <span title="Applicants">📨 ${applicantCount}</span>
+      <span title="Conversion rate">📈 ${conversion}%</span>
+    </div>
     <div class="job-card-bottom">
       <span class="job-card-wage">${job.wage} kr/hr</span>
-      <span class="muted" style="font-size:12px;">${applicantCount} applicants</span>
+      <span class="muted" style="font-size:12px;">Click for details</span>
     </div>
   </div>`;
 }
