@@ -228,6 +228,7 @@
       </a>
       <nav class="dash-nav">
         <button class="dash-nav-item active" data-panel="overview">🏠 Overview</button>
+        <button class="dash-nav-item" data-panel="profile">🙍 My profile</button>
         <button class="dash-nav-item" data-panel="hot">🔥 Hot Jobs</button>
         <button class="dash-nav-item" data-panel="recommended">✨ Recommended</button>
         <button class="dash-nav-item" data-panel="saved">🔖 Saved jobs</button>
@@ -245,6 +246,29 @@
           <p class="dash-subgreeting">You're 1 application away from your first interview 👀</p>
         </div>
         <div class="dash-avatar" id="dashAvatar">AJ</div>
+      </div>
+
+      <!-- My profile -->
+      <div class="dash-section glass-card" id="teenProfileSection" style="padding:24px;">
+        <div class="dash-section-head"><h3>🙍 My profile</h3></div>
+        <div class="company-profile-editor">
+          <div class="cp-logo-col">
+            <div class="cp-logo-preview" id="tpPhotoPreview"></div>
+            <label class="btn btn-secondary cp-upload-btn">
+              Upload photo
+              <input type="file" id="tpPhotoInput" accept="image/*" style="display:none;">
+            </label>
+          </div>
+          <form class="auth-form cp-fields" id="teenProfileForm">
+            <label>Full name<input type="text" id="tpName" required></label>
+            <div class="form-row">
+              <label>Age<input type="number" id="tpAge" min="13" max="18"></label>
+              <label>City<input type="text" id="tpCity"></label>
+            </div>
+            <label>About you <span class="muted" style="font-weight:400;">(optional — shown to companies you apply to)</span><textarea id="tpBio" rows="2" placeholder="A sentence about yourself"></textarea></label>
+            <button type="submit" class="btn btn-primary" style="align-self:flex-start;">Save profile</button>
+          </form>
+        </div>
       </div>
 
       <!-- Profile completion -->
@@ -269,22 +293,22 @@
       <div class="dash-stats-grid">
         <div class="glass-card stat-card">
           <span class="stat-icon">📨</span>
-          <span class="counter" data-count="12">0</span>
+          <span class="counter" id="teenStatApplications" data-count="0">0</span>
           <p>Applications sent</p>
         </div>
         <div class="glass-card stat-card">
-          <span class="stat-icon">👁</span>
-          <span class="counter" data-count="34">0</span>
-          <p>Profile views</p>
+          <span class="stat-icon">✅</span>
+          <span class="counter" id="teenStatAccepted" data-count="0">0</span>
+          <p>Accepted</p>
         </div>
         <div class="glass-card stat-card">
           <span class="stat-icon">🗓</span>
-          <span class="counter" data-count="2">0</span>
-          <p>Interviews booked</p>
+          <span class="counter" id="teenStatPending" data-count="0">0</span>
+          <p>Awaiting response</p>
         </div>
         <div class="glass-card stat-card">
           <span class="stat-icon">🔖</span>
-          <span class="counter" data-count="7">0</span>
+          <span class="counter" id="teenStatSaved" data-count="0">0</span>
           <p>Saved jobs</p>
         </div>
       </div>
@@ -392,22 +416,22 @@
       <div class="dash-stats-grid">
         <div class="glass-card stat-card">
           <span class="stat-icon">🧑‍🤝‍🧑</span>
-          <span class="counter" data-count="58">0</span>
+          <span class="counter" id="coStatApplicants" data-count="0">0</span>
           <p>Total applicants</p>
         </div>
         <div class="glass-card stat-card">
           <span class="stat-icon">📋</span>
-          <span class="counter" data-count="6">0</span>
+          <span class="counter" id="coStatOpenPositions" data-count="0">0</span>
           <p>Open positions</p>
         </div>
         <div class="glass-card stat-card">
           <span class="stat-icon">🗓</span>
-          <span class="counter" data-count="9">0</span>
-          <p>Interviews scheduled</p>
+          <span class="counter" id="coStatAccepted" data-count="0">0</span>
+          <p>Accepted / chatting</p>
         </div>
         <div class="glass-card stat-card">
           <span class="stat-icon">⭐</span>
-          <span class="counter" data-count="4">0</span>
+          <span class="counter" id="coStatNewToday" data-count="0">0</span>
           <p>New today</p>
         </div>
       </div>
@@ -449,8 +473,10 @@
       <nav class="dash-nav">
         <button class="dash-nav-item active" data-apanel="companies">🏢 Pending companies</button>
         <button class="dash-nav-item" data-apanel="allCompanies">🛠 Manage companies</button>
+        <button class="dash-nav-item" data-apanel="teens">🧑‍🤝‍🧑 All teens</button>
         <button class="dash-nav-item" data-apanel="jobs">📋 Pending jobs</button>
         <button class="dash-nav-item" data-apanel="all">🗂 All listings</button>
+        <button class="dash-nav-item" data-apanel="messages">💬 Messages</button>
       </nav>
       <button class="btn btn-secondary" style="margin-top:auto;width:100%;" data-nav="landing">← Back to site</button>
     </aside>
@@ -485,6 +511,16 @@
           <span class="counter" id="adminLiveJobsCount" data-count="0">0</span>
           <p>Live jobs</p>
         </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🧑‍🤝‍🧑</span>
+          <span class="counter" id="adminTotalTeensCount" data-count="0">0</span>
+          <p>Total teens</p>
+        </div>
+        <div class="glass-card stat-card">
+          <span class="stat-icon">🚫</span>
+          <span class="counter" id="adminBannedCount" data-count="0">0</span>
+          <p>Banned accounts</p>
+        </div>
       </div>
 
       <div class="dash-section" id="adminCompaniesSection">
@@ -495,9 +531,14 @@
       <div class="dash-section" id="adminAllCompaniesSection">
         <div class="dash-section-head">
           <h3>🛠 Manage companies</h3>
-          <p class="muted" style="font-size:13px;">Toggle any company's status — Approved lets them post jobs, Verified is a trust badge, Featured highlights them on the homepage. All independent, all reversible.</p>
+          <p class="muted" style="font-size:13px;">Toggle any company's status, chat with them directly, or ban an account that's abusing the platform.</p>
         </div>
         <div class="review-list" id="adminAllCompaniesList"></div>
+      </div>
+
+      <div class="dash-section" id="adminTeensSection">
+        <div class="dash-section-head"><h3>🧑‍🤝‍🧑 All teens</h3></div>
+        <div class="review-list" id="adminTeensList"></div>
       </div>
 
       <div class="dash-section" id="adminJobsSection">
@@ -508,6 +549,15 @@
       <div class="dash-section" id="adminAllSection">
         <div class="dash-section-head"><h3>All listings</h3></div>
         <div class="review-list" id="adminAllList"></div>
+      </div>
+
+      <div class="dash-section" id="adminMessagesSection">
+        <div class="dash-section-head"><h3>💬 Messages</h3></div>
+        <p class="muted" style="font-size:13px;margin-bottom:12px;">Start a chat with any company or teen from the lists above — it'll show up here.</p>
+        <div class="chat-shell" id="adminChatShell">
+          <div class="chat-list" id="adminChatList"></div>
+          <div class="chat-thread" id="adminChatThread"></div>
+        </div>
       </div>
     </section>
   </div>
@@ -546,14 +596,7 @@
           </select>
         </label>
       </div>
-      <div class="form-row">
-        <label>Distance mode
-          <select id="pjMode">
-            <option value="walk">🚶 Walking</option><option value="bike">🚴 Cycling</option><option value="transit">🚌 Transit</option>
-          </select>
-        </label>
-        <label>Applications close<input type="date" id="pjDeadline" required></label>
-      </div>
+      <label>Applications close<input type="date" id="pjDeadline" required></label>
       <label>Working hours<input type="text" id="pjHours" placeholder="e.g. 10-15 hrs/week" required></label>
       <label>Location<input type="text" id="pjLocation" placeholder="e.g. Nørrebro, Copenhagen" required></label>
       <label>Description<textarea id="pjDescription" rows="3" placeholder="What will they be doing?" required></textarea></label>
