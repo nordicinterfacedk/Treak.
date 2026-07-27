@@ -696,6 +696,7 @@ async function renderCompanyDashboard(){
   $('#activityList').innerHTML = activity || `<p class="jobs-empty">No activity yet.</p>`;
 
   $('#companyListings').innerHTML = jobs.length ? jobs.map(j=> companyJobCardHTML(j, apps.filter(a=>a.job_id===j.id).length)).join('') : `<p class="jobs-empty">You haven't posted any jobs yet.</p>`;
+  $$('[data-manage-job]').forEach(card=> card.addEventListener('click', ()=> openCompanyJobModal(card.dataset.manageJob)));
 
   await renderCompanyChatList();
   await renderWarningsBanner();
@@ -704,7 +705,7 @@ function companyJobCardHTML(job, applicantCount){
   const statusMap = { pending:['status-pending','Pending review'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
   const [cls,label] = statusMap[job.status];
   return `
-  <div class="job-card" style="cursor:default;">
+  <div class="job-card" data-manage-job="${job.id}">
     <div class="job-card-top">
       <div class="job-card-company"><div class="job-card-title">${job.title}</div></div>
       <span class="status-badge ${cls}">${label}</span>
@@ -720,6 +721,74 @@ function companyJobCardHTML(job, applicantCount){
     </div>
   </div>`;
 }
+/* Company clicks a job in "Manage listings" — shows the job's full
+   details plus everyone who applied specifically to THIS job, with
+   accept/reject actions, and an option to take the listing down. */
+async function openCompanyJobModal(jobId){
+  const { data: job, error } = await supabase.from('jobs').select('*').eq('id', jobId).single();
+  logSupabaseError('openCompanyJobModal', error);
+  if(!job) return;
+  const { data: apps } = await supabase
+    .from('applications')
+    .select('*, teen:profiles!applications_teen_id_fkey(*)')
+    .eq('job_id', jobId)
+    .order('created_at', {ascending:false});
+  const applicants = apps || [];
+  const statusMap = { pending:['status-pending','Pending review'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
+  const [cls,label] = statusMap[job.status];
+  const appStatusMap = { applied:['status-pending','Applied'], accepted:['status-accepted','Accepted'], rejected:['status-rejected','Rejected'] };
+
+  $('#companyJobModalContent').innerHTML = `
+    <h2 class="jm-title">${job.title}</h2>
+    <div class="jm-badges"><span class="status-badge ${cls}">${label}</span><span class="badge badge-live">${applicants.length} applicants</span></div>
+    <div class="jm-grid">
+      <div class="jm-stat"><label>Hourly wage</label><p style="color:var(--amber)">${job.wage} kr/hr</p></div>
+      <div class="jm-stat"><label>Category</label><p>${job.category||'—'}</p></div>
+      <div class="jm-stat"><label>Applications close</label><p>${job.deadline ? new Date(job.deadline).toLocaleDateString() : '—'}</p></div>
+      <div class="jm-stat"><label>Age requirement</label><p>${job.age_req}+</p></div>
+    </div>
+    <div class="jm-section"><h4>Description</h4><p>${job.description||''}</p></div>
+    <div class="jm-section">
+      <h4>Applicants for this job (${applicants.length})</h4>
+      <div class="application-list" id="companyJobApplicantList" style="margin-top:10px;">
+        ${applicants.length ? applicants.map(a=>{
+          if(!a.teen) return '';
+          const [acls,alabel] = appStatusMap[a.status] || ['status-pending', a.status];
+          const actions = a.status==='applied'
+            ? `<button data-modal-accept="${a.id}">Accept</button><button data-modal-reject="${a.id}">Reject</button>`
+            : a.status==='accepted' ? `<button data-modal-chat="${a.teen.id}">Message</button>` : `<span class="muted" style="font-size:12px;">Closed</span>`;
+          return `<div class="app-row">
+            <div class="app-row-left">
+              ${logoBoxHTML(a.teen, null, "applicant-avatar")}
+              <div><div class="app-row-title">${a.teen.name}${a.teen.age?`, ${a.teen.age}`:''}</div><div class="app-row-sub">Applied ${daysAgo(a.created_at)}</div></div>
+            </div>
+            <span class="status-badge ${acls}">${alabel}</span>
+            <div class="applicant-actions">${actions}</div>
+          </div>`;
+        }).join('') : `<p class="jobs-empty">No one has applied yet.</p>`}
+      </div>
+    </div>
+    <div class="jm-actions-wrap">
+      <button class="btn btn-secondary" style="background:rgba(240,68,56,0.12);color:#FCA5A5;" id="companyJobDeleteBtn">🗑️ Take down this job</button>
+    </div>
+  `;
+  $('#companyJobModalOverlay').classList.add('open');
+  $$('#companyJobApplicantList [data-modal-accept]').forEach(btn=> btn.addEventListener('click', async ()=>{ await respondToApplication(btn.dataset.modalAccept, 'accepted'); await openCompanyJobModal(jobId); }));
+  $$('#companyJobApplicantList [data-modal-reject]').forEach(btn=> btn.addEventListener('click', async ()=>{ await respondToApplication(btn.dataset.modalReject, 'rejected'); await openCompanyJobModal(jobId); }));
+  $$('#companyJobApplicantList [data-modal-chat]').forEach(btn=> btn.addEventListener('click', async ()=>{ closeModal('companyJobModalOverlay'); await openCompanyChatWith(btn.dataset.modalChat); document.getElementById('companyMessagesSection').scrollIntoView({behavior:'smooth'}); }));
+  $('#companyJobDeleteBtn').addEventListener('click', async ()=>{
+    if(!window.confirm(`Take down "${job.title}"? This can't be undone.`)) return;
+    const { error: delErr } = await supabase.from('jobs').delete().eq('id', jobId);
+    logSupabaseError('company delete job', delErr);
+    if(delErr){ pushToast('🚫','Could not delete', delErr.message); return; }
+    pushToast('🗑️','Job removed', '');
+    closeModal('companyJobModalOverlay');
+    await renderCompanyDashboard();
+  });
+}
+$('#companyJobModalClose').addEventListener('click', ()=>closeModal('companyJobModalOverlay'));
+$('#companyJobModalOverlay').addEventListener('click', e=>{ if(e.target.id==='companyJobModalOverlay') closeModal('companyJobModalOverlay'); });
+
 async function respondToApplication(appId, status){
   const { data: app, error } = await supabase.from('applications').update({ status }).eq('id', appId).select('*, job:jobs(*)').single();
   logSupabaseError('respondToApplication', error);
@@ -1163,7 +1232,8 @@ let activeMessageChannel = null;
 
 async function renderTeenChatList(){
   const user = currentUser(); if(!user) return;
-  const { data: chats } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('teen_id', user.id);
+  const { data: chats, error: chatsErr } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('teen_id', user.id);
+  logSupabaseError('renderTeenChatList', chatsErr);
   const list = chats || [];
   const listEl = $('#teenChatList');
   const previews = await Promise.all(list.map(async c=>{
@@ -1208,7 +1278,8 @@ async function renderTeenChatThread(){
 
 async function renderCompanyChatList(){
   const user = currentUser(); if(!user) return;
-  const { data: chats } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('company_id', user.id);
+  const { data: chats, error: chatsErr } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('company_id', user.id);
+  logSupabaseError('renderCompanyChatList', chatsErr);
   const list = chats || [];
   const listEl = $('#companyChatList');
   const previews = await Promise.all(list.map(async c=>{
@@ -1281,9 +1352,10 @@ function subscribeToChat(chatId, container, myId){
 async function sendChatMessage(chatId, inputEl){
   const text = inputEl.value.trim();
   if(!text) return;
-  inputEl.value = '';
   const { error } = await supabase.from('messages').insert({ chat_id:chatId, sender_id:currentUser().id, text });
   logSupabaseError('sendChatMessage', error);
+  if(error){ pushToast('🚫','Message not sent', error.message); return; }
+  inputEl.value = '';
 }
 
 // ------------------------------------------------------------
@@ -1293,10 +1365,11 @@ let activeAdminChatId = null;
 
 async function renderAdminChatList(){
   const user = currentUser(); if(!user) return;
-  const { data: chats } = await supabase
+  const { data: chats, error: chatsErr } = await supabase
     .from('chats')
     .select('*, teen:profiles!chats_teen_id_fkey(*), company:profiles!chats_company_id_fkey(*)')
     .eq('admin_id', user.id);
+  logSupabaseError('renderAdminChatList', chatsErr);
   const list = chats || [];
   const listEl = $('#adminChatList');
   const previews = await Promise.all(list.map(async c=>{
