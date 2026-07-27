@@ -750,11 +750,16 @@ async function openCompanyJobModal(jobId){
   const statusMap = { pending:['status-pending','Pending review'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
   const [cls,label] = statusMap[job.status];
   const appStatusMap = { applied:['status-pending','Applied'], accepted:['status-accepted','Accepted'], rejected:['status-rejected','Rejected'] };
+  const views = job.views || 0;
+  const conversion = views>0 ? Math.round((applicants.length/views)*100) : 0;
 
   $('#companyJobModalContent').innerHTML = `
     <h2 class="jm-title">${job.title}</h2>
-    <div class="jm-badges"><span class="status-badge ${cls}">${label}</span><span class="badge badge-live">${applicants.length} applicants</span></div>
+    <div class="jm-badges"><span class="status-badge ${cls}">${label}</span></div>
     <div class="jm-grid">
+      <div class="jm-stat"><label>👁 Views</label><p>${views}</p></div>
+      <div class="jm-stat"><label>📨 Applicants</label><p>${applicants.length}</p></div>
+      <div class="jm-stat"><label>📈 Conversion rate</label><p style="color:var(--green)">${conversion}%</p></div>
       <div class="jm-stat"><label>Hourly wage</label><p style="color:var(--amber)">${job.wage} kr/hr</p></div>
       <div class="jm-stat"><label>Category</label><p>${job.category||'—'}</p></div>
       <div class="jm-stat"><label>Applications close</label><p>${job.deadline ? new Date(job.deadline).toLocaleDateString() : '—'}</p></div>
@@ -1247,13 +1252,13 @@ async function renderTeenChatList(){
   const user = currentUser(); if(!user) return;
   const { data: chats, error: chatsErr } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('teen_id', user.id);
   logSupabaseError('renderTeenChatList', chatsErr);
-  const list = chats || [];
+  const list = (chats || []).filter(c=> c.company || c.admin);
   const listEl = $('#teenChatList');
   const previews = await Promise.all(list.map(async c=>{
     const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
     return { ...c, preview: last?.text || '' };
   }));
-  listEl.innerHTML = previews.length ? previews.filter(c=> c.company || c.admin).map(c=>{
+  listEl.innerHTML = previews.length ? previews.map(c=>{
     const other = c.company || c.admin;
     const label = c.admin ? `${other.name} <span class="muted" style="font-size:11px;">· Treak team</span>` : other.name;
     return `<div class="chat-list-item ${c.id===activeTeenChatId?'active':''}" data-chat-id="${c.id}">
@@ -1262,8 +1267,9 @@ async function renderTeenChatList(){
     </div>`;
   }).join('') : `<div class="chat-list-empty">No conversations yet — get accepted for a job to start chatting.</div>`;
   $$('#teenChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openTeenChat(item.dataset.chatId)));
-  if(!activeTeenChatId && list.length) await openTeenChat(list[0].id);
-  else if(activeTeenChatId) await renderTeenChatThread();
+
+  if(!activeTeenChatId && list.length) activeTeenChatId = list[0].id;
+  if(activeTeenChatId) await renderTeenChatThread();
   else $('#teenChatThread').innerHTML = `<div class="chat-thread-empty">Select a conversation to start chatting.</div>`;
 }
 async function openTeenChatWith(companyId){
@@ -1276,30 +1282,39 @@ async function openTeenChat(chatId){
   await renderTeenChatList();
 }
 async function renderTeenChatThread(){
-  const { data: chat } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeTeenChatId).single();
-  if(!chat) return;
-  const co = chat.company || chat.admin || { name:'Unknown', color:'var(--gradient)' };
-  $('#teenChatThread').innerHTML = `
-    <div class="chat-thread-header">${logoBoxHTML(co, null, "chat-list-avatar")}<div><div class="chat-list-name">${co.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
-    <div class="chat-thread-messages" id="teenChatMessages"></div>
-    <div class="chat-thread-input"><input type="text" id="teenChatInput" placeholder="Message ${co.name}…"><button id="teenChatSend">➤</button></div>`;
-  await loadAndRenderMessages(chat.id, $('#teenChatMessages'), currentUser().id);
-  subscribeToChat(chat.id, $('#teenChatMessages'), currentUser().id);
-  $('#teenChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#teenChatInput'), $('#teenChatMessages')));
-  $('#teenChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#teenChatInput'), $('#teenChatMessages')); });
+  try{
+    const { data: chat, error } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeTeenChatId).single();
+    if(error || !chat){
+      logSupabaseError('renderTeenChatThread', error);
+      $('#teenChatThread').innerHTML = `<div class="chat-thread-empty">Couldn't load this conversation — try selecting it again.</div>`;
+      return;
+    }
+    const co = chat.company || chat.admin || { name:'Unknown', color:'var(--gradient)' };
+    $('#teenChatThread').innerHTML = `
+      <div class="chat-thread-header">${logoBoxHTML(co, null, "chat-list-avatar")}<div><div class="chat-list-name">${co.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
+      <div class="chat-thread-messages" id="teenChatMessages"></div>
+      <div class="chat-thread-input"><input type="text" id="teenChatInput" placeholder="Message ${co.name}…"><button id="teenChatSend">➤</button></div>`;
+    await loadAndRenderMessages(chat.id, $('#teenChatMessages'), currentUser().id);
+    subscribeToChat(chat.id, $('#teenChatMessages'), currentUser().id);
+    $('#teenChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#teenChatInput'), $('#teenChatMessages')));
+    $('#teenChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#teenChatInput'), $('#teenChatMessages')); });
+  }catch(err){
+    console.error('Treak: renderTeenChatThread failed —', err);
+    $('#teenChatThread').innerHTML = `<div class="chat-thread-empty">Something went wrong loading this conversation.</div>`;
+  }
 }
 
 async function renderCompanyChatList(){
   const user = currentUser(); if(!user) return;
   const { data: chats, error: chatsErr } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('company_id', user.id);
   logSupabaseError('renderCompanyChatList', chatsErr);
-  const list = chats || [];
+  const list = (chats || []).filter(c=> c.teen || c.admin);
   const listEl = $('#companyChatList');
   const previews = await Promise.all(list.map(async c=>{
     const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
     return { ...c, preview: last?.text || '' };
   }));
-  listEl.innerHTML = previews.length ? previews.filter(c=> c.teen || c.admin).map(c=>{
+  listEl.innerHTML = previews.length ? previews.map(c=>{
     const other = c.teen || c.admin;
     const label = c.admin ? `${other.name} <span class="muted" style="font-size:11px;">· Treak team</span>` : other.name;
     return `<div class="chat-list-item ${c.id===activeCompanyChatId?'active':''}" data-chat-id="${c.id}">
@@ -1308,8 +1323,9 @@ async function renderCompanyChatList(){
     </div>`;
   }).join('') : `<div class="chat-list-empty">No conversations yet — accept an applicant to start chatting.</div>`;
   $$('#companyChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openCompanyChat(item.dataset.chatId)));
-  if(!activeCompanyChatId && list.length) await openCompanyChat(list[0].id);
-  else if(activeCompanyChatId) await renderCompanyChatThread();
+
+  if(!activeCompanyChatId && list.length) activeCompanyChatId = list[0].id;
+  if(activeCompanyChatId) await renderCompanyChatThread();
   else $('#companyChatThread').innerHTML = `<div class="chat-thread-empty">Select a conversation to start chatting.</div>`;
 }
 async function openCompanyChatWith(teenId){
@@ -1322,17 +1338,26 @@ async function openCompanyChat(chatId){
   await renderCompanyChatList();
 }
 async function renderCompanyChatThread(){
-  const { data: chat } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeCompanyChatId).single();
-  if(!chat) return;
-  const other = chat.teen || chat.admin || { name:'Unknown', color:'var(--gradient)' };
-  $('#companyChatThread').innerHTML = `
-    <div class="chat-thread-header">${logoBoxHTML(other, null, "chat-list-avatar")}<div><div class="chat-list-name">${other.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
-    <div class="chat-thread-messages" id="companyChatMessages"></div>
-    <div class="chat-thread-input"><input type="text" id="companyChatInput" placeholder="Message ${other.name}…"><button id="companyChatSend">➤</button></div>`;
-  await loadAndRenderMessages(chat.id, $('#companyChatMessages'), currentUser().id);
-  subscribeToChat(chat.id, $('#companyChatMessages'), currentUser().id);
-  $('#companyChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#companyChatInput'), $('#companyChatMessages')));
-  $('#companyChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#companyChatInput'), $('#companyChatMessages')); });
+  try{
+    const { data: chat, error } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeCompanyChatId).single();
+    if(error || !chat){
+      logSupabaseError('renderCompanyChatThread', error);
+      $('#companyChatThread').innerHTML = `<div class="chat-thread-empty">Couldn't load this conversation — try selecting it again.</div>`;
+      return;
+    }
+    const other = chat.teen || chat.admin || { name:'Unknown', color:'var(--gradient)' };
+    $('#companyChatThread').innerHTML = `
+      <div class="chat-thread-header">${logoBoxHTML(other, null, "chat-list-avatar")}<div><div class="chat-list-name">${other.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
+      <div class="chat-thread-messages" id="companyChatMessages"></div>
+      <div class="chat-thread-input"><input type="text" id="companyChatInput" placeholder="Message ${other.name}…"><button id="companyChatSend">➤</button></div>`;
+    await loadAndRenderMessages(chat.id, $('#companyChatMessages'), currentUser().id);
+    subscribeToChat(chat.id, $('#companyChatMessages'), currentUser().id);
+    $('#companyChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#companyChatInput'), $('#companyChatMessages')));
+    $('#companyChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#companyChatInput'), $('#companyChatMessages')); });
+  }catch(err){
+    console.error('Treak: renderCompanyChatThread failed —', err);
+    $('#companyChatThread').innerHTML = `<div class="chat-thread-empty">Something went wrong loading this conversation.</div>`;
+  }
 }
 
 async function loadAndRenderMessages(chatId, container, myId){
@@ -1393,7 +1418,7 @@ async function renderAdminChatList(){
     .select('*, teen:profiles!chats_teen_id_fkey(*), company:profiles!chats_company_id_fkey(*)')
     .eq('admin_id', user.id);
   logSupabaseError('renderAdminChatList', chatsErr);
-  const list = chats || [];
+  const list = (chats || []).filter(c=> c.teen || c.company);
   const listEl = $('#adminChatList');
   const previews = await Promise.all(list.map(async c=>{
     const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
@@ -1407,8 +1432,9 @@ async function renderAdminChatList(){
     </div>`;
   }).join('') : `<div class="chat-list-empty">No conversations yet — click "💬 Chat" next to any company or teen above.</div>`;
   $$('#adminChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openAdminChat(item.dataset.chatId)));
-  if(!activeAdminChatId && list.length) await openAdminChat(list[0].id);
-  else if(activeAdminChatId) await renderAdminChatThread();
+
+  if(!activeAdminChatId && list.length) activeAdminChatId = list[0].id;
+  if(activeAdminChatId) await renderAdminChatThread();
   else $('#adminChatThread').innerHTML = `<div class="chat-thread-empty">Select a conversation, or start one from the lists above.</div>`;
 }
 async function openAdminChat(chatId){
@@ -1416,20 +1442,29 @@ async function openAdminChat(chatId){
   await renderAdminChatList();
 }
 async function renderAdminChatThread(){
-  const { data: chat } = await supabase
-    .from('chats')
-    .select('*, teen:profiles!chats_teen_id_fkey(*), company:profiles!chats_company_id_fkey(*)')
-    .eq('id', activeAdminChatId).single();
-  if(!chat) return;
-  const other = chat.company || chat.teen;
-  $('#adminChatThread').innerHTML = `
-    <div class="chat-thread-header">${logoBoxHTML(other, null, "chat-list-avatar")}<div><div class="chat-list-name">${other?.name||'Unknown'}</div><div class="chat-list-preview">Active conversation</div></div></div>
-    <div class="chat-thread-messages" id="adminChatMessages"></div>
-    <div class="chat-thread-input"><input type="text" id="adminChatInput" placeholder="Message ${other?.name||''}…"><button id="adminChatSend">➤</button></div>`;
-  await loadAndRenderMessages(chat.id, $('#adminChatMessages'), currentUser().id);
-  subscribeToChat(chat.id, $('#adminChatMessages'), currentUser().id);
-  $('#adminChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#adminChatInput'), $('#adminChatMessages')));
-  $('#adminChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#adminChatInput'), $('#adminChatMessages')); });
+  try{
+    const { data: chat, error } = await supabase
+      .from('chats')
+      .select('*, teen:profiles!chats_teen_id_fkey(*), company:profiles!chats_company_id_fkey(*)')
+      .eq('id', activeAdminChatId).single();
+    if(error || !chat){
+      logSupabaseError('renderAdminChatThread', error);
+      $('#adminChatThread').innerHTML = `<div class="chat-thread-empty">Couldn't load this conversation — try selecting it again.</div>`;
+      return;
+    }
+    const other = chat.company || chat.teen || { name:'Unknown', color:'var(--gradient)' };
+    $('#adminChatThread').innerHTML = `
+      <div class="chat-thread-header">${logoBoxHTML(other, null, "chat-list-avatar")}<div><div class="chat-list-name">${other.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
+      <div class="chat-thread-messages" id="adminChatMessages"></div>
+      <div class="chat-thread-input"><input type="text" id="adminChatInput" placeholder="Message ${other.name}…"><button id="adminChatSend">➤</button></div>`;
+    await loadAndRenderMessages(chat.id, $('#adminChatMessages'), currentUser().id);
+    subscribeToChat(chat.id, $('#adminChatMessages'), currentUser().id);
+    $('#adminChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#adminChatInput'), $('#adminChatMessages')));
+    $('#adminChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#adminChatInput'), $('#adminChatMessages')); });
+  }catch(err){
+    console.error('Treak: renderAdminChatThread failed —', err);
+    $('#adminChatThread').innerHTML = `<div class="chat-thread-empty">Something went wrong loading this conversation.</div>`;
+  }
 }
 /* Called from the "💬 Chat" buttons next to any company or teen in the
    admin lists — finds an existing admin conversation with them, or
