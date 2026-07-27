@@ -34,6 +34,21 @@ function daysAgo(ts){
   const d = Math.floor((Date.now() - new Date(ts).getTime())/86400000);
   return d<=0 ? 'today' : d===1 ? '1 day ago' : `${d} days ago`;
 }
+/* Real verified badge (used to be a plain ✔ character) */
+const VERIFIED_BADGE = `<svg width="14" height="14" viewBox="0 0 22 22" style="vertical-align:-2px;flex-shrink:0;"><path d="M11 1l2.4 1.4 2.7-.4 1.3 2.4 2.4 1.3-.4 2.7L21 11l-1.4 2.4.4 2.7-2.4 1.3-1.3 2.4-2.7-.4L11 21l-2.4-1.4-2.7.4-1.3-2.4-2.4-1.3.4-2.7L1 11l1.4-2.4-.4-2.7 2.4-1.3 1.3-2.4 2.7.4L11 1z" fill="#4F46E5"/><path d="M7.5 11.2l2.2 2.2 4.8-5.2" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`;
+/* Renders a company/teen's avatar box — a real uploaded photo if they
+   have one, otherwise falls back to the colored initials box. Used
+   everywhere a logo/avatar appears so uploads show up consistently. */
+function logoBoxHTML(entity, sizePx, className){
+  className = className || 'company-logo';
+  const style = sizePx ? `width:${sizePx}px;height:${sizePx}px;font-size:${Math.round(sizePx*0.4)}px;` : '';
+  if(entity && entity.logo_url){
+    return `<div class="${className}" style="${style}background:var(--card-raised);"><img src="${entity.logo_url}" alt=""></div>`;
+  }
+  const bg = entity?.color || 'var(--gradient)';
+  const label = entity?.short || initials(entity?.name || '?');
+  return `<div class="${className}" style="${style}background:${bg}">${label}</div>`;
+}
 function logSupabaseError(context, error){
   if(error) console.error(`Treak / Supabase [${context}]:`, error.message || error);
 }
@@ -117,7 +132,7 @@ function updateAccountUI(){
   $('#accountMenu').classList.toggle('hidden', !loggedIn);
   if(loggedIn){
     $('#accountName').textContent = (user.name||'You').split(' ')[0];
-    $('#accountAvatar').textContent = initials(user.name);
+    $('#accountAvatar').innerHTML = user.logo_url ? `<img src="${user.logo_url}" alt="">` : initials(user.name);
   }
 }
 $('#accountBtn').addEventListener('click', e=>{ e.stopPropagation(); $('#accountDropdown').classList.toggle('open'); });
@@ -142,9 +157,9 @@ function companyCardHTML(c, openJobsCount){
   return `
   <div class="company-card">
     <div class="company-card-top">
-      <div class="company-logo" style="background:${c.color}">${c.short||initials(c.name)}</div>
+      ${logoBoxHTML(c)}
       <div>
-        <div class="company-name">${c.name} ${c.verified ? '<span class="verified-tick" title="Verified employer">✔</span>':''}</div>
+        <div class="company-name">${c.name} ${c.verified ? `<span class="verified-tick" title="Verified employer">${VERIFIED_BADGE}</span>`:''}</div>
         <div class="company-meta">${c.category||''} · ${c.distance||1} km away</div>
       </div>
     </div>
@@ -157,17 +172,19 @@ function companyCardHTML(c, openJobsCount){
 async function renderCompanies(){
   const { data: companies, error } = await supabase.from('profiles').select('*').eq('role','company').eq('approved', true);
   logSupabaseError('renderCompanies', error);
-  const list = companies || [];
+  const { data: liveJobsList } = await supabase.from('jobs').select('company_id').eq('status','approved');
+  const counts = {};
+  (liveJobsList||[]).forEach(j=> counts[j.company_id] = (counts[j.company_id]||0)+1);
+  // A company only shows up publicly once it actually has a live job —
+  // being an approved account alone isn't "hiring."
+  const list = (companies||[]).filter(c => counts[c.id] > 0);
   if(!list.length){
-    $('#companiesGrid').innerHTML = `<p class="jobs-empty" style="grid-column:1/-1;">No companies onboarded yet — <button type="button" class="link-btn" id="beFirstCompanyBtn">be the first to sign up</button>.</p>`;
+    $('#companiesGrid').innerHTML = `<p class="jobs-empty" style="grid-column:1/-1;">No companies with live jobs yet — <button type="button" class="link-btn" id="beFirstCompanyBtn">be the first to sign up</button>.</p>`;
     $('#logoStrip').innerHTML = `<span class="muted" style="font-size:14px;">Your company could be first</span>`;
     const beFirstBtn = $('#beFirstCompanyBtn');
     if(beFirstBtn) beFirstBtn.addEventListener('click', ()=>{ authRole='company'; authMode='signup'; refreshAuthUI(); openAuth(); });
     return;
   }
-  const { data: liveJobsList } = await supabase.from('jobs').select('company_id').eq('status','approved');
-  const counts = {};
-  (liveJobsList||[]).forEach(j=> counts[j.company_id] = (counts[j.company_id]||0)+1);
   $('#companiesGrid').innerHTML = list.slice(0,8).map(c=> companyCardHTML(c, counts[c.id]||0)).join('');
   $('#logoStrip').innerHTML = list.map(c=>`<span>${c.name}</span>`).join('');
 }
@@ -201,7 +218,7 @@ function jobCardHTML(job){
   <div class="job-card" data-job="${job.id}">
     <div class="job-card-top">
       <div class="job-card-company">
-        <div class="company-logo" style="background:${c.color}">${c.short||initials(c.name)}</div>
+        ${logoBoxHTML(c)}
         <div><div class="job-card-company-name">${c.name}</div></div>
       </div>
       <button class="save-btn ${isSaved?'saved':''}" data-save="${job.id}" aria-label="Save job">${isSaved ? '★' : '☆'}</button>
@@ -312,11 +329,11 @@ async function openJobModal(jobId){
     alreadyApplied = !!data;
   }
   $('#jobModalContent').innerHTML = `
-    <div class="jm-head"><div class="company-logo" style="background:${c.color};width:48px;height:48px;font-size:18px;">${c.short||initials(c.name)}</div></div>
+    <div class="jm-head">${logoBoxHTML(c, 48)}</div>
     <h2 class="jm-title">${job.title}</h2>
     <p class="jm-company">${c.name} · ${job.location||''}</p>
     <div class="jm-badges">
-      ${c.verified ? '<span class="badge badge-verified">✔ Verified employer</span>' : ''}
+      ${c.verified ? `<span class="badge badge-verified">${VERIFIED_BADGE} Verified employer</span>` : ''}
       ${c.featured ? '<span class="badge badge-featured">★ Featured employer</span>' : ''}
       <span class="badge badge-live">${modeIcon[job.mode]} ${job.distance} km away</span>
     </div>
@@ -429,6 +446,21 @@ function logInRoute(){
 }
 
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// 7b. SHARED: profile photo upload (used by both teen + company profile forms)
+// ------------------------------------------------------------
+async function uploadProfilePhoto(file){
+  const user = currentUser();
+  if(!user || !file) return null;
+  const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+  const path = `${user.id}/photo-${Date.now()}.${ext}`;
+  const { error: uploadErr } = await supabase.storage.from('logos').upload(path, file, { upsert:true });
+  if(uploadErr){ logSupabaseError('uploadProfilePhoto', uploadErr); pushToast('🚫','Upload failed', uploadErr.message); return null; }
+  const { data } = supabase.storage.from('logos').getPublicUrl(path);
+  return data?.publicUrl || null;
+}
+
+// ------------------------------------------------------------
 // 8. TEEN DASHBOARD
 // ------------------------------------------------------------
 function statusBadge(status){
@@ -441,7 +473,14 @@ async function renderTeenDashboard(){
   await refreshSavedJobIds();
 
   $('#dashGreeting').textContent = `Good to see you, ${user.name.split(' ')[0]}.`;
-  $('#dashAvatar').textContent = initials(user.name);
+  $('#dashAvatar').innerHTML = user.logo_url ? `<img src="${user.logo_url}" alt="">` : initials(user.name);
+
+  // My profile panel
+  $('#tpName').value = user.name || '';
+  $('#tpAge').value = user.age || '';
+  $('#tpCity').value = user.city || '';
+  $('#tpBio').value = user.bio || '';
+  $('#tpPhotoPreview').innerHTML = user.logo_url ? `<img src="${user.logo_url}" alt="">` : initials(user.name);
 
   const { data: myApps, error } = await supabase
     .from('applications')
@@ -465,7 +504,7 @@ async function renderTeenDashboard(){
     const [cls,label] = statusBadge(a.status);
     return `<div class="app-row">
       <div class="app-row-left">
-        <div class="company-logo" style="background:${a.company.color}">${a.company.short||initials(a.company.name)}</div>
+        ${logoBoxHTML(a.company)}
         <div><div class="app-row-title">${a.job.title}</div><div class="app-row-sub">${a.company.name} · Applied ${daysAgo(a.created_at)}</div></div>
       </div>
       <span class="status-badge ${cls}">${label}</span>
@@ -476,7 +515,7 @@ async function renderTeenDashboard(){
   $('#dashInterviews').innerHTML = accepted.length ? accepted.map(a=>`
     <div class="interview-row" data-open-chat="${a.company.id}">
       <div class="app-row-left">
-        <div class="company-logo" style="background:${a.company.color}">${a.company.short||initials(a.company.name)}</div>
+        ${logoBoxHTML(a.company)}
         <div><div class="app-row-title">${a.job.title}</div><div class="app-row-sub">${a.company.name}</div></div>
       </div>
       <span class="status-badge status-accepted">💬 Open chat</span>
@@ -488,10 +527,46 @@ async function renderTeenDashboard(){
   $('#profilePercentLabel').textContent = pct+'%';
   requestAnimationFrame(()=>{ $('#profileProgressFill').style.width = pct+'%'; });
 
+  $('#teenStatApplications').textContent = apps.length;
+  $('#teenStatApplications').dataset.count = apps.length;
+  $('#teenStatAccepted').textContent = accepted.length;
+  $('#teenStatAccepted').dataset.count = accepted.length;
+  $('#teenStatPending').textContent = pendingCount;
+  $('#teenStatPending').dataset.count = pendingCount;
+  $('#teenStatSaved').textContent = mySavedJobIds.size;
+  $('#teenStatSaved').dataset.count = mySavedJobIds.size;
+  observeCounters();
+
   attachJobCardEvents();
   await renderTeenChatList();
   await renderHotJobs();
 }
+
+$('#teenProfileForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const user = currentUser(); if(!user) return;
+  const { error } = await supabase.from('profiles').update({
+    name: $('#tpName').value.trim(),
+    age: Number($('#tpAge').value) || null,
+    city: $('#tpCity').value.trim(),
+    bio: $('#tpBio').value.trim(),
+  }).eq('id', user.id);
+  if(error){ logSupabaseError('save teen profile', error); pushToast('🚫','Could not save', error.message); return; }
+  await refreshCurrentProfile();
+  pushToast('✅','Profile updated', '');
+  await renderTeenDashboard();
+});
+$('#tpPhotoInput').addEventListener('change', async e=>{
+  const file = e.target.files[0]; if(!file) return;
+  pushToast('⏳','Uploading photo…', '');
+  const url = await uploadProfilePhoto(file);
+  if(!url) return;
+  const { error } = await supabase.from('profiles').update({ logo_url:url }).eq('id', currentUser().id);
+  if(error){ logSupabaseError('save teen photo', error); pushToast('🚫','Could not save photo', error.message); return; }
+  await refreshCurrentProfile();
+  pushToast('✅','Photo updated', '');
+  await renderTeenDashboard();
+});
 
 // ------------------------------------------------------------
 // 9. COMPANY DASHBOARD
@@ -505,6 +580,13 @@ async function renderCompanyDashboard(){
   $('#postJobBtn').disabled = !user.approved;
   $('#postJobBtn').title = user.approved ? '' : 'Your account must be approved before you can post jobs';
 
+  // Company profile panel
+  $('#cpName').value = user.name || '';
+  $('#cpCategory').value = user.category || 'Retail';
+  $('#cpBio').value = user.bio || '';
+  $('#cpLogoPreview').innerHTML = user.logo_url ? `<img src="${user.logo_url}" alt="">` : (user.short || initials(user.name));
+  $('#cpLogoPreview').style.background = user.logo_url ? 'var(--card-raised)' : (user.color || 'var(--gradient)');
+
   const { data: myJobs } = await supabase.from('jobs').select('*').eq('company_id', user.id).order('created_at', {ascending:false});
   const jobs = myJobs || [];
   const { data: myApps } = await supabase
@@ -516,6 +598,17 @@ async function renderCompanyDashboard(){
 
   $('#companySubgreeting').textContent = `${jobs.filter(j=>j.status==='approved').length} live listings · ${apps.length} total applicants`;
 
+  const today = new Date().toDateString();
+  $('#coStatApplicants').textContent = apps.length;
+  $('#coStatApplicants').dataset.count = apps.length;
+  $('#coStatOpenPositions').textContent = jobs.filter(j=>j.status==='approved').length;
+  $('#coStatOpenPositions').dataset.count = jobs.filter(j=>j.status==='approved').length;
+  $('#coStatAccepted').textContent = apps.filter(a=>a.status==='accepted').length;
+  $('#coStatAccepted').dataset.count = apps.filter(a=>a.status==='accepted').length;
+  $('#coStatNewToday').textContent = apps.filter(a=> new Date(a.created_at).toDateString()===today).length;
+  $('#coStatNewToday').dataset.count = apps.filter(a=> new Date(a.created_at).toDateString()===today).length;
+  observeCounters();
+
   const statLabels = { applied:['status-pending','Applied'], accepted:['status-accepted','Accepted'], rejected:['status-rejected','Rejected'] };
   $('#applicantTable').innerHTML = apps.length ? apps.slice(0,10).map(a=>{
     if(!a.teen || !a.job) return '';
@@ -526,7 +619,7 @@ async function renderCompanyDashboard(){
         ? `<button data-chat="${a.teen.id}">Message</button>`
         : `<span class="muted" style="font-size:12px;">Closed</span>`;
     return `<div class="applicant-row">
-      <div class="applicant-avatar">${initials(a.teen.name)}</div>
+      ${logoBoxHTML(a.teen, null, "applicant-avatar")}
       <div class="applicant-info">
         <div class="applicant-name">${a.teen.name}${a.teen.age?`, ${a.teen.age}`:''}</div>
         <div class="applicant-job">${a.job.title} · Applied ${daysAgo(a.created_at)}</div>
@@ -598,24 +691,57 @@ $('#postJobBtn').addEventListener('click', ()=>{
 });
 $('#postJobModalClose').addEventListener('click', ()=>closeModal('postJobModalOverlay'));
 $('#postJobModalOverlay').addEventListener('click', e=>{ if(e.target.id==='postJobModalOverlay') closeModal('postJobModalOverlay'); });
+function autoMode(distanceKm){
+  if(distanceKm <= 1.5) return 'walk';
+  if(distanceKm <= 5) return 'bike';
+  return 'transit';
+}
 $('#postJobForm').addEventListener('submit', async e=>{
   e.preventDefault();
   if(!supabase){ pushToast('🚫','No connection','Cannot reach the database right now'); return; }
   const user = currentUser();
+  const distance = user.distance || 1.5;
   const job = {
     company_id:user.id,
     title:$('#pjTitle').value.trim(), wage:Number($('#pjWage').value), age_req:Number($('#pjAge').value),
-    type:$('#pjType').value, mode:$('#pjMode').value, hours:$('#pjHours').value.trim(),
+    type:$('#pjType').value, category:$('#pjCategory').value, mode:autoMode(distance),
+    deadline:$('#pjDeadline').value || null, hours:$('#pjHours').value.trim(),
     location:$('#pjLocation').value.trim(), description:$('#pjDescription').value.trim(),
+    notes:$('#pjNotes').value.trim() || null,
     requirements:[`Minimum age ${$('#pjAge').value}`, 'Reliable and punctual', 'No experience required — full training provided'],
-    distance: user.distance || 1.5, buzz: Math.floor(Math.random()*10)+1,
+    distance, buzz: Math.floor(Math.random()*10)+1,
   };
   const { error } = await supabase.from('jobs').insert(job);
   logSupabaseError('post job', error);
   if(error){ pushToast('🚫','Could not submit', error.message); return; }
   closeModal('postJobModalOverlay');
   e.target.reset();
-  pushToast('⏳','Submitted for review', 'An admin will approve your listing shortly');
+  pushToast(user.verified ? '✅' : '⏳', user.verified ? 'Job posted — live now!' : 'Submitted for review', user.verified ? 'Verified companies go live instantly' : 'An admin will approve your listing shortly');
+  await renderCompanyDashboard();
+});
+
+$('#companyProfileForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const user = currentUser(); if(!user) return;
+  const { error } = await supabase.from('profiles').update({
+    name: $('#cpName').value.trim(),
+    category: $('#cpCategory').value,
+    bio: $('#cpBio').value.trim(),
+  }).eq('id', user.id);
+  if(error){ logSupabaseError('save company profile', error); pushToast('🚫','Could not save', error.message); return; }
+  await refreshCurrentProfile();
+  pushToast('✅','Profile updated', '');
+  await renderCompanyDashboard();
+});
+$('#cpLogoInput').addEventListener('change', async e=>{
+  const file = e.target.files[0]; if(!file) return;
+  pushToast('⏳','Uploading logo…', '');
+  const url = await uploadProfilePhoto(file);
+  if(!url) return;
+  const { error } = await supabase.from('profiles').update({ logo_url:url }).eq('id', currentUser().id);
+  if(error){ logSupabaseError('save company logo', error); pushToast('🚫','Could not save logo', error.message); return; }
+  await refreshCurrentProfile();
+  pushToast('✅','Logo updated', '');
   await renderCompanyDashboard();
 });
 
@@ -624,7 +750,7 @@ $$('.dash-nav-item[data-panel]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     $$('.dash-nav-item[data-panel]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    const map = { overview:'', hot:'#hotJobsSection', recommended:'#dashRecommended', saved:'#dashRecommended', applications:'#dashApplications', interviews:'#dashInterviews', messages:'#teenMessagesSection' };
+    const map = { overview:'', profile:'#teenProfileSection', hot:'#hotJobsSection', recommended:'#dashRecommended', saved:'#dashRecommended', applications:'#dashApplications', interviews:'#dashInterviews', messages:'#teenMessagesSection' };
     const sel = map[btn.dataset.panel];
     if(sel) document.querySelector(sel).closest('.dash-section, .dash-columns').scrollIntoView({behavior:'smooth', block:'start'});
   });
@@ -633,7 +759,7 @@ $$('.dash-nav-item[data-cpanel]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     $$('.dash-nav-item[data-cpanel]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    const map = { overview:'', listings:'#companyListingsSection', applicants:'#applicantTable', messages:'#companyMessagesSection' };
+    const map = { overview:'', profile:'#companyProfileSection', listings:'#companyListingsSection', applicants:'#applicantTable', messages:'#companyMessagesSection' };
     const sel = map[btn.dataset.cpanel];
     if(sel) document.querySelector(sel).closest('.dash-section, .dash-columns').scrollIntoView({behavior:'smooth', block:'start'});
   });
@@ -642,7 +768,7 @@ $$('.dash-nav-item[data-apanel]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     $$('.dash-nav-item[data-apanel]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    const map = { companies:'#adminCompaniesSection', allCompanies:'#adminAllCompaniesSection', jobs:'#adminJobsSection', all:'#adminAllSection' };
+    const map = { companies:'#adminCompaniesSection', allCompanies:'#adminAllCompaniesSection', teens:'#adminTeensSection', jobs:'#adminJobsSection', all:'#adminAllSection', messages:'#adminMessagesSection' };
     document.querySelector(map[btn.dataset.apanel]).scrollIntoView({behavior:'smooth', block:'start'});
   });
 });
@@ -657,9 +783,11 @@ async function renderAdmin(){
   const { data: pendingCompanies } = await supabase.from('profiles').select('*').eq('role','company').eq('approved', false);
   const { data: pendingJobs } = await supabase.from('jobs').select('*, company:profiles!jobs_company_id_fkey(*)').eq('status','pending');
   const { data: allCompanies } = await supabase.from('profiles').select('*').eq('role','company').order('created_at', {ascending:false});
+  const { data: allTeens } = await supabase.from('profiles').select('*').eq('role','teen').order('created_at', {ascending:false});
   const { data: liveJobsList } = await supabase.from('jobs').select('id').eq('status','approved');
   const { data: allJobsList } = await supabase.from('jobs').select('*, company:profiles!jobs_company_id_fkey(*)').order('created_at', {ascending:false});
   const approvedCos = (allCompanies||[]).filter(c=>c.approved);
+  const bannedCount = [...(allCompanies||[]), ...(allTeens||[])].filter(u=>u.banned).length;
 
   $('#adminPendingCompaniesCount').textContent = (pendingCompanies||[]).length;
   $('#adminPendingCompaniesCount').dataset.count = (pendingCompanies||[]).length;
@@ -669,10 +797,14 @@ async function renderAdmin(){
   $('#adminApprovedCount').dataset.count = approvedCos.length;
   $('#adminLiveJobsCount').textContent = (liveJobsList||[]).length;
   $('#adminLiveJobsCount').dataset.count = (liveJobsList||[]).length;
+  $('#adminTotalTeensCount').textContent = (allTeens||[]).length;
+  $('#adminTotalTeensCount').dataset.count = (allTeens||[]).length;
+  $('#adminBannedCount').textContent = bannedCount;
+  $('#adminBannedCount').dataset.count = bannedCount;
 
   $('#adminCompaniesList').innerHTML = (pendingCompanies||[]).length ? pendingCompanies.map(c=>`
     <div class="review-card">
-      <div class="company-logo" style="background:${c.color}">${c.short||initials(c.name)}</div>
+      ${logoBoxHTML(c)}
       <div class="review-card-info">
         <div class="review-card-title">${c.name}</div>
         <div class="review-card-sub">${c.category||''} · Applied ${daysAgo(c.created_at)}</div>
@@ -685,22 +817,39 @@ async function renderAdmin(){
 
   $('#adminAllCompaniesList').innerHTML = (allCompanies||[]).length ? allCompanies.map(c=>`
     <div class="review-card">
-      <div class="company-logo" style="background:${c.color}">${c.short||initials(c.name)}</div>
+      ${logoBoxHTML(c)}
       <div class="review-card-info">
         <div class="review-card-title">${c.name}</div>
         <div class="review-card-sub">${c.category||''} · Joined ${daysAgo(c.created_at)}</div>
+        ${c.banned ? `<div class="ban-notice">🚫 Banned${c.ban_reason ? ': '+c.ban_reason : ''}</div>` : ''}
       </div>
       <div class="review-card-actions admin-toggle-row">
         <button class="toggle-pill ${c.approved?'on':''}" data-toggle="approved" data-id="${c.id}">${c.approved?'✔ Approved':'Approve'}</button>
         <button class="toggle-pill ${c.verified?'on':''}" data-toggle="verified" data-id="${c.id}">${c.verified?'✔ Verified':'Verify'}</button>
         <button class="toggle-pill ${c.featured?'on':''}" data-toggle="featured" data-id="${c.id}">${c.featured?'★ Featured':'Feature'}</button>
+        <button class="btn-chat" data-admin-chat-company="${c.id}">💬 Chat</button>
+        ${c.banned ? `<button class="btn-unban" data-unban="${c.id}">Unban</button>` : `<button class="btn-ban" data-ban="${c.id}">Ban</button>`}
       </div>
     </div>`).join('') : `<p class="review-empty">No companies yet.</p>`;
+
+  $('#adminTeensList').innerHTML = (allTeens||[]).length ? allTeens.map(t=>`
+    <div class="review-card">
+      ${logoBoxHTML(t, null, "applicant-avatar")}
+      <div class="review-card-info">
+        <div class="review-card-title">${t.name}${t.age?`, ${t.age}`:''}</div>
+        <div class="review-card-sub">${t.city||''} · Joined ${daysAgo(t.created_at)}</div>
+        ${t.banned ? `<div class="ban-notice">🚫 Banned${t.ban_reason ? ': '+t.ban_reason : ''}</div>` : ''}
+      </div>
+      <div class="review-card-actions admin-toggle-row">
+        <button class="btn-chat" data-admin-chat-teen="${t.id}">💬 Chat</button>
+        ${t.banned ? `<button class="btn-unban" data-unban="${t.id}">Unban</button>` : `<button class="btn-ban" data-ban="${t.id}">Ban</button>`}
+      </div>
+    </div>`).join('') : `<p class="review-empty">No teens yet.</p>`;
 
   $('#adminJobsList').innerHTML = (pendingJobs||[]).length ? pendingJobs.map(j=>{
     const c = j.company;
     return `<div class="review-card">
-      <div class="company-logo" style="background:${c.color}">${c.short||initials(c.name)}</div>
+      ${logoBoxHTML(c)}
       <div class="review-card-info">
         <div class="review-card-title">${j.title} <span class="muted">· ${c.name}</span></div>
         <div class="review-card-sub">${j.wage} kr/hr · ${j.type} · ${j.location||''} · Submitted ${daysAgo(j.created_at)}</div>
@@ -717,9 +866,10 @@ async function renderAdmin(){
     const statusMap = { pending:['status-pending','Pending'], approved:['status-approved','Live'], rejected:['status-rejected','Rejected'] };
     const [cls,label] = statusMap[j.status];
     return `<div class="review-card">
-      <div class="company-logo" style="background:${c.color}">${c.short||initials(c.name)}</div>
+      ${logoBoxHTML(c)}
       <div class="review-card-info"><div class="review-card-title">${j.title} <span class="muted">· ${c.name}</span></div><div class="review-card-sub">${j.wage} kr/hr · ${j.location||''}</div></div>
       <span class="status-badge ${cls}">${label}</span>
+      <button class="btn-reject" data-delete-job="${j.id}">Delete</button>
     </div>`;
   }).join('');
 
@@ -728,7 +878,13 @@ async function renderAdmin(){
   $$('[data-approve-job]').forEach(btn=> btn.addEventListener('click', ()=> reviewJob(btn.dataset.approveJob, 'approved')));
   $$('[data-reject-job]').forEach(btn=> btn.addEventListener('click', ()=> reviewJob(btn.dataset.rejectJob, 'rejected')));
   $$('[data-toggle]').forEach(btn=> btn.addEventListener('click', ()=> toggleCompanyFlag(btn.dataset.id, btn.dataset.toggle, !btn.classList.contains('on'))));
+  $$('[data-ban]').forEach(btn=> btn.addEventListener('click', ()=> banUser(btn.dataset.ban, true)));
+  $$('[data-unban]').forEach(btn=> btn.addEventListener('click', ()=> banUser(btn.dataset.unban, false)));
+  $$('[data-delete-job]').forEach(btn=> btn.addEventListener('click', ()=> deleteJob(btn.dataset.deleteJob)));
+  $$('[data-admin-chat-company]').forEach(btn=> btn.addEventListener('click', ()=> openAdminChatWith(btn.dataset.adminChatCompany, 'company')));
+  $$('[data-admin-chat-teen]').forEach(btn=> btn.addEventListener('click', ()=> openAdminChatWith(btn.dataset.adminChatTeen, 'teen')));
 
+  await renderAdminChatList();
   observeCounters();
 }
 async function reviewCompany(id, approve){
@@ -756,6 +912,26 @@ async function reviewJob(id, status){
   pushToast(status==='approved'?'✅':'🚫', status==='approved'?'Job approved':'Job rejected', '');
   await renderAdmin();
 }
+async function banUser(id, ban){
+  let reason = null;
+  if(ban){
+    reason = window.prompt('Reason for banning this account (shown to them, and kept on record):');
+    if(reason === null) return; // cancelled
+  }
+  const { error } = await supabase.from('profiles').update({ banned: ban, ban_reason: ban ? reason : null }).eq('id', id);
+  logSupabaseError('banUser', error);
+  if(error){ pushToast('🚫','Update failed', error.message); return; }
+  pushToast(ban?'🚫':'✅', ban?'Account banned':'Account unbanned', '');
+  await renderAdmin();
+}
+async function deleteJob(id){
+  if(!window.confirm('Permanently delete this job listing? This cannot be undone.')) return;
+  const { error } = await supabase.from('jobs').delete().eq('id', id);
+  logSupabaseError('deleteJob', error);
+  if(error){ pushToast('🚫','Delete failed', error.message); return; }
+  pushToast('🗑️','Job deleted', '');
+  await renderAdmin();
+}
 
 // ------------------------------------------------------------
 // 11. CHAT (with realtime updates)
@@ -775,7 +951,7 @@ async function renderTeenChatList(){
   }));
   listEl.innerHTML = previews.length ? previews.map(c=>`
     <div class="chat-list-item ${c.id===activeTeenChatId?'active':''}" data-chat-id="${c.id}">
-      <div class="chat-list-avatar" style="background:${c.company.color}">${c.company.short||initials(c.company.name)}</div>
+      ${logoBoxHTML(c.company, null, "chat-list-avatar")}
       <div><div class="chat-list-name">${c.company.name}</div><div class="chat-list-preview">${c.preview}</div></div>
     </div>`).join('') : `<div class="chat-list-empty">No conversations yet — get accepted for a job to start chatting.</div>`;
   $$('#teenChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openTeenChat(item.dataset.chatId)));
@@ -797,7 +973,7 @@ async function renderTeenChatThread(){
   if(!chat) return;
   const co = chat.company;
   $('#teenChatThread').innerHTML = `
-    <div class="chat-thread-header"><div class="chat-list-avatar" style="background:${co.color}">${co.short||initials(co.name)}</div><div><div class="chat-list-name">${co.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
+    <div class="chat-thread-header">${logoBoxHTML(co, null, "chat-list-avatar")}<div><div class="chat-list-name">${co.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
     <div class="chat-thread-messages" id="teenChatMessages"></div>
     <div class="chat-thread-input"><input type="text" id="teenChatInput" placeholder="Message ${co.name}…"><button id="teenChatSend">➤</button></div>`;
   await loadAndRenderMessages(chat.id, $('#teenChatMessages'), currentUser().id);
@@ -817,7 +993,7 @@ async function renderCompanyChatList(){
   }));
   listEl.innerHTML = previews.length ? previews.map(c=>`
     <div class="chat-list-item ${c.id===activeCompanyChatId?'active':''}" data-chat-id="${c.id}">
-      <div class="chat-list-avatar">${initials(c.teen.name)}</div>
+      ${logoBoxHTML(c.teen, null, "chat-list-avatar")}
       <div><div class="chat-list-name">${c.teen.name}</div><div class="chat-list-preview">${c.preview}</div></div>
     </div>`).join('') : `<div class="chat-list-empty">No conversations yet — accept an applicant to start chatting.</div>`;
   $$('#companyChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openCompanyChat(item.dataset.chatId)));
@@ -839,7 +1015,7 @@ async function renderCompanyChatThread(){
   if(!chat) return;
   const teen = chat.teen;
   $('#companyChatThread').innerHTML = `
-    <div class="chat-thread-header"><div class="chat-list-avatar">${initials(teen.name)}</div><div><div class="chat-list-name">${teen.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
+    <div class="chat-thread-header">${logoBoxHTML(teen, null, "chat-list-avatar")}<div><div class="chat-list-name">${teen.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
     <div class="chat-thread-messages" id="companyChatMessages"></div>
     <div class="chat-thread-input"><input type="text" id="companyChatInput" placeholder="Message ${teen.name}…"><button id="companyChatSend">➤</button></div>`;
   await loadAndRenderMessages(chat.id, $('#companyChatMessages'), currentUser().id);
@@ -884,6 +1060,74 @@ async function sendChatMessage(chatId, inputEl){
 }
 
 // ------------------------------------------------------------
+// 11b. ADMIN CHAT — admin can message any teen or company directly
+// ------------------------------------------------------------
+let activeAdminChatId = null;
+
+async function renderAdminChatList(){
+  const user = currentUser(); if(!user) return;
+  const { data: chats } = await supabase
+    .from('chats')
+    .select('*, teen:profiles!chats_teen_id_fkey(*), company:profiles!chats_company_id_fkey(*)')
+    .eq('admin_id', user.id);
+  const list = chats || [];
+  const listEl = $('#adminChatList');
+  const previews = await Promise.all(list.map(async c=>{
+    const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
+    return { ...c, preview: last?.text || '' };
+  }));
+  listEl.innerHTML = previews.length ? previews.map(c=>{
+    const other = c.company || c.teen;
+    return `<div class="chat-list-item ${c.id===activeAdminChatId?'active':''}" data-chat-id="${c.id}">
+      ${logoBoxHTML(other, null, "chat-list-avatar")}
+      <div><div class="chat-list-name">${other?.name||'Unknown'} ${c.company?'<span class="muted" style="font-size:11px;">· company</span>':'<span class="muted" style="font-size:11px;">· teen</span>'}</div><div class="chat-list-preview">${c.preview}</div></div>
+    </div>`;
+  }).join('') : `<div class="chat-list-empty">No conversations yet — click "💬 Chat" next to any company or teen above.</div>`;
+  $$('#adminChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openAdminChat(item.dataset.chatId)));
+  if(!activeAdminChatId && list.length) await openAdminChat(list[0].id);
+  else if(activeAdminChatId) await renderAdminChatThread();
+  else $('#adminChatThread').innerHTML = `<div class="chat-thread-empty">Select a conversation, or start one from the lists above.</div>`;
+}
+async function openAdminChat(chatId){
+  activeAdminChatId = chatId;
+  await renderAdminChatList();
+}
+async function renderAdminChatThread(){
+  const { data: chat } = await supabase
+    .from('chats')
+    .select('*, teen:profiles!chats_teen_id_fkey(*), company:profiles!chats_company_id_fkey(*)')
+    .eq('id', activeAdminChatId).single();
+  if(!chat) return;
+  const other = chat.company || chat.teen;
+  $('#adminChatThread').innerHTML = `
+    <div class="chat-thread-header">${logoBoxHTML(other, null, "chat-list-avatar")}<div><div class="chat-list-name">${other?.name||'Unknown'}</div><div class="chat-list-preview">Active conversation</div></div></div>
+    <div class="chat-thread-messages" id="adminChatMessages"></div>
+    <div class="chat-thread-input"><input type="text" id="adminChatInput" placeholder="Message ${other?.name||''}…"><button id="adminChatSend">➤</button></div>`;
+  await loadAndRenderMessages(chat.id, $('#adminChatMessages'), currentUser().id);
+  subscribeToChat(chat.id, $('#adminChatMessages'), currentUser().id);
+  $('#adminChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#adminChatInput')));
+  $('#adminChatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendChatMessage(chat.id, $('#adminChatInput')); });
+}
+/* Called from the "💬 Chat" buttons next to any company or teen in the
+   admin lists — finds an existing admin conversation with them, or
+   creates one on the spot, no application or acceptance required. */
+async function openAdminChatWith(participantId, participantType){
+  const user = currentUser();
+  const filterCol = participantType === 'company' ? 'company_id' : 'teen_id';
+  const { data: existing } = await supabase.from('chats').select('id').eq('admin_id', user.id).eq(filterCol, participantId).maybeSingle();
+  let chatId = existing?.id;
+  if(!chatId){
+    const insertRow = { admin_id: user.id, [filterCol]: participantId };
+    const { data: created, error } = await supabase.from('chats').insert(insertRow).select().single();
+    logSupabaseError('openAdminChatWith', error);
+    if(error){ pushToast('🚫','Could not start chat', error.message); return; }
+    chatId = created.id;
+  }
+  document.getElementById('adminMessagesSection').scrollIntoView({behavior:'smooth'});
+  await openAdminChat(chatId);
+}
+
+// ------------------------------------------------------------
 // 12. TOP 10 HOTTEST JOBS
 // ------------------------------------------------------------
 function hotScore(job){ return job.wage*1.1 + job.buzz*1.6 - job.distance*3.4; }
@@ -896,7 +1140,7 @@ function hotJobRowHTML(job, rank){
   return `
   <div class="hot-job-row ${medal}" data-job="${job.id}" style="transition-delay:${rank*45}ms">
     <div class="hot-rank">${rank<=3 ? ['🥇','🥈','🥉'][rank-1] : String(rank).padStart(2,'0')}</div>
-    <div class="company-logo" style="background:${c.color}">${c.short||initials(c.name)}</div>
+    ${logoBoxHTML(c)}
     <div class="hot-job-info">
       <div class="hot-job-title">${job.title} <span class="hot-job-company">· ${c.name}</span></div>
       <div class="hot-job-meta"><span>${modeIcon[job.mode]} ${job.distance} km</span><span>🔥 ${job.buzz} applied this week</span></div>
@@ -938,6 +1182,18 @@ document.addEventListener('click', e=>{ if(!e.target.closest('.nav-actions')) $(
 // ------------------------------------------------------------
 // 14. NAV: mobile hamburger, scroll shadow
 // ------------------------------------------------------------
+$$('.nav-link').forEach(link=>{
+  link.addEventListener('click', async e=>{
+    const hash = link.getAttribute('href');
+    if(!hash || !hash.startsWith('#')) return;
+    e.preventDefault();
+    if(lastView !== 'landing'){ await showView('landing'); }
+    setTimeout(()=>{
+      const target = document.querySelector(hash);
+      if(target) target.scrollIntoView({ behavior:'smooth', block:'start' });
+    }, lastView==='landing' ? 0 : 60);
+  });
+});
 $('#hamburger').addEventListener('click', ()=>{
   const links = $('#navLinks');
   links.style.display = links.style.display === 'flex' ? 'none' : 'flex';
