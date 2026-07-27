@@ -166,7 +166,7 @@ $('#logoutBtn').addEventListener('click', async ()=>{
 // ------------------------------------------------------------
 function companyCardHTML(c, openJobsCount){
   return `
-  <div class="company-card">
+  <div class="company-card" data-view-company-public="${c.id}">
     <div class="company-card-top">
       ${logoBoxHTML(c)}
       <div>
@@ -198,6 +198,7 @@ async function renderCompanies(){
   }
   $('#companiesGrid').innerHTML = list.slice(0,8).map(c=> companyCardHTML(c, counts[c.id]||0)).join('');
   $('#logoStrip').innerHTML = list.map(c=>`<span>${c.name}</span>`).join('');
+  $$('[data-view-company-public]').forEach(card=> card.addEventListener('click', ()=> openCompanyProfileModal(card.dataset.viewCompanyPublic)));
 }
 
 let visibleCount = 9;
@@ -328,6 +329,34 @@ $('#loadMoreBtn').addEventListener('click', ()=>{ visibleCount += 9; renderJobs(
 // ------------------------------------------------------------
 // 6. JOB DETAIL MODAL
 // ------------------------------------------------------------
+async function openCompanyProfileModal(companyId){
+  const { data: c, error } = await supabase.from('profiles').select('*').eq('id', companyId).single();
+  logSupabaseError('openCompanyProfileModal', error);
+  if(!c) return;
+  const { data: jobsList } = await supabase.from('jobs').select('*').eq('company_id', companyId).eq('status','approved');
+  const jobs = jobsList || [];
+  $('#jobModalContent').innerHTML = `
+    <div class="jm-head">${logoBoxHTML(c, 56)}</div>
+    <h2 class="jm-title">${c.name}</h2>
+    <p class="jm-company">${c.category||''}${c.distance?` · ${c.distance} km away`:''}</p>
+    <div class="jm-badges">
+      ${c.verified ? `<span class="badge badge-verified">${VERIFIED_BADGE} Verified employer</span>` : ''}
+      ${c.featured ? '<span class="badge badge-featured">★ Featured employer</span>' : ''}
+    </div>
+    ${c.bio ? `<div class="jm-section"><h4>About ${c.name}</h4><p>${c.bio}</p></div>` : `<div class="jm-section"><p class="muted">This company hasn't added a description yet.</p></div>`}
+    <div class="jm-section">
+      <h4>Open jobs (${jobs.length})</h4>
+      ${jobs.length ? `<div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">${jobs.map(j=>`
+        <div class="app-row" data-open-job="${j.id}" style="cursor:pointer;">
+          <div class="app-row-left"><div><div class="app-row-title">${j.title}</div><div class="app-row-sub">${j.wage} kr/hr · ${j.type}</div></div></div>
+          <span class="job-card-wage">${j.wage} kr/hr</span>
+        </div>`).join('')}</div>` : `<p class="muted">No open jobs right now.</p>`}
+    </div>
+  `;
+  $('#jobModalOverlay').classList.add('open');
+  $$('#jobModalContent [data-open-job]').forEach(row=> row.addEventListener('click', ()=> openJobModal(row.dataset.openJob)));
+}
+
 async function openJobModal(jobId){
   const job = cachedLiveJobs.find(j=>j.id===jobId) || (await supabase.from('jobs').select('*, company:profiles!jobs_company_id_fkey(*)').eq('id', jobId).single()).data;
   if(!job) return;
@@ -342,7 +371,7 @@ async function openJobModal(jobId){
   $('#jobModalContent').innerHTML = `
     <div class="jm-head">${logoBoxHTML(c, 48)}</div>
     <h2 class="jm-title">${job.title}</h2>
-    <p class="jm-company">${c.name} · ${job.location||''}</p>
+    <p class="jm-company"><button type="button" class="link-btn" id="jmViewCompanyBtn" style="font-size:14px;color:var(--text-mid);">${c.name}</button> · ${job.location||''}</p>
     <div class="jm-badges">
       ${c.verified ? `<span class="badge badge-verified">${VERIFIED_BADGE} Verified employer</span>` : ''}
       ${c.featured ? '<span class="badge badge-featured">★ Featured employer</span>' : ''}
@@ -361,6 +390,7 @@ async function openJobModal(jobId){
       <button class="btn btn-primary" id="jmApplyBtn" ${alreadyApplied?'disabled':''}>${alreadyApplied ? 'Applied ✓' : 'Apply now'}</button>
     </div>`;
   $('#jobModalOverlay').classList.add('open');
+  $('#jmViewCompanyBtn').addEventListener('click', ()=> openCompanyProfileModal(c.id));
   $('#jmApplyBtn').addEventListener('click', async ()=>{ if(!alreadyApplied){ await applyToJob(job.id); closeModal('jobModalOverlay'); } });
   $('#jmSaveBtn').addEventListener('click', async ()=>{
     const u = currentUser();
@@ -1133,18 +1163,21 @@ let activeMessageChannel = null;
 
 async function renderTeenChatList(){
   const user = currentUser(); if(!user) return;
-  const { data: chats } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*)').eq('teen_id', user.id);
+  const { data: chats } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('teen_id', user.id);
   const list = chats || [];
   const listEl = $('#teenChatList');
   const previews = await Promise.all(list.map(async c=>{
     const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
     return { ...c, preview: last?.text || '' };
   }));
-  listEl.innerHTML = previews.length ? previews.map(c=>`
-    <div class="chat-list-item ${c.id===activeTeenChatId?'active':''}" data-chat-id="${c.id}">
-      ${logoBoxHTML(c.company, null, "chat-list-avatar")}
-      <div><div class="chat-list-name">${c.company.name}</div><div class="chat-list-preview">${c.preview}</div></div>
-    </div>`).join('') : `<div class="chat-list-empty">No conversations yet — get accepted for a job to start chatting.</div>`;
+  listEl.innerHTML = previews.length ? previews.map(c=>{
+    const other = c.company || c.admin;
+    const label = c.admin ? `${other.name} <span class="muted" style="font-size:11px;">· Treak team</span>` : other.name;
+    return `<div class="chat-list-item ${c.id===activeTeenChatId?'active':''}" data-chat-id="${c.id}">
+      ${logoBoxHTML(other, null, "chat-list-avatar")}
+      <div><div class="chat-list-name">${label}</div><div class="chat-list-preview">${c.preview}</div></div>
+    </div>`;
+  }).join('') : `<div class="chat-list-empty">No conversations yet — get accepted for a job to start chatting.</div>`;
   $$('#teenChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openTeenChat(item.dataset.chatId)));
   if(!activeTeenChatId && list.length) await openTeenChat(list[0].id);
   else if(activeTeenChatId) await renderTeenChatThread();
@@ -1160,9 +1193,9 @@ async function openTeenChat(chatId){
   await renderTeenChatList();
 }
 async function renderTeenChatThread(){
-  const { data: chat } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*)').eq('id', activeTeenChatId).single();
+  const { data: chat } = await supabase.from('chats').select('*, company:profiles!chats_company_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeTeenChatId).single();
   if(!chat) return;
-  const co = chat.company;
+  const co = chat.company || chat.admin;
   $('#teenChatThread').innerHTML = `
     <div class="chat-thread-header">${logoBoxHTML(co, null, "chat-list-avatar")}<div><div class="chat-list-name">${co.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
     <div class="chat-thread-messages" id="teenChatMessages"></div>
@@ -1175,18 +1208,21 @@ async function renderTeenChatThread(){
 
 async function renderCompanyChatList(){
   const user = currentUser(); if(!user) return;
-  const { data: chats } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*)').eq('company_id', user.id);
+  const { data: chats } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('company_id', user.id);
   const list = chats || [];
   const listEl = $('#companyChatList');
   const previews = await Promise.all(list.map(async c=>{
     const { data: last } = await supabase.from('messages').select('text').eq('chat_id', c.id).order('created_at', {ascending:false}).limit(1).maybeSingle();
     return { ...c, preview: last?.text || '' };
   }));
-  listEl.innerHTML = previews.length ? previews.map(c=>`
-    <div class="chat-list-item ${c.id===activeCompanyChatId?'active':''}" data-chat-id="${c.id}">
-      ${logoBoxHTML(c.teen, null, "chat-list-avatar")}
-      <div><div class="chat-list-name">${c.teen.name}</div><div class="chat-list-preview">${c.preview}</div></div>
-    </div>`).join('') : `<div class="chat-list-empty">No conversations yet — accept an applicant to start chatting.</div>`;
+  listEl.innerHTML = previews.length ? previews.map(c=>{
+    const other = c.teen || c.admin;
+    const label = c.admin ? `${other.name} <span class="muted" style="font-size:11px;">· Treak team</span>` : other.name;
+    return `<div class="chat-list-item ${c.id===activeCompanyChatId?'active':''}" data-chat-id="${c.id}">
+      ${logoBoxHTML(other, null, "chat-list-avatar")}
+      <div><div class="chat-list-name">${label}</div><div class="chat-list-preview">${c.preview}</div></div>
+    </div>`;
+  }).join('') : `<div class="chat-list-empty">No conversations yet — accept an applicant to start chatting.</div>`;
   $$('#companyChatList [data-chat-id]').forEach(item=> item.addEventListener('click', ()=> openCompanyChat(item.dataset.chatId)));
   if(!activeCompanyChatId && list.length) await openCompanyChat(list[0].id);
   else if(activeCompanyChatId) await renderCompanyChatThread();
@@ -1202,13 +1238,13 @@ async function openCompanyChat(chatId){
   await renderCompanyChatList();
 }
 async function renderCompanyChatThread(){
-  const { data: chat } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*)').eq('id', activeCompanyChatId).single();
+  const { data: chat } = await supabase.from('chats').select('*, teen:profiles!chats_teen_id_fkey(*), admin:profiles!chats_admin_id_fkey(*)').eq('id', activeCompanyChatId).single();
   if(!chat) return;
-  const teen = chat.teen;
+  const other = chat.teen || chat.admin;
   $('#companyChatThread').innerHTML = `
-    <div class="chat-thread-header">${logoBoxHTML(teen, null, "chat-list-avatar")}<div><div class="chat-list-name">${teen.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
+    <div class="chat-thread-header">${logoBoxHTML(other, null, "chat-list-avatar")}<div><div class="chat-list-name">${other.name}</div><div class="chat-list-preview">Active conversation</div></div></div>
     <div class="chat-thread-messages" id="companyChatMessages"></div>
-    <div class="chat-thread-input"><input type="text" id="companyChatInput" placeholder="Message ${teen.name}…"><button id="companyChatSend">➤</button></div>`;
+    <div class="chat-thread-input"><input type="text" id="companyChatInput" placeholder="Message ${other.name}…"><button id="companyChatSend">➤</button></div>`;
   await loadAndRenderMessages(chat.id, $('#companyChatMessages'), currentUser().id);
   subscribeToChat(chat.id, $('#companyChatMessages'), currentUser().id);
   $('#companyChatSend').addEventListener('click', ()=> sendChatMessage(chat.id, $('#companyChatInput')));
