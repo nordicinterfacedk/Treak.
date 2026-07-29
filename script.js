@@ -95,6 +95,7 @@ if(supabase){
   supabase.auth.onAuthStateChange(async ()=>{
     await refreshCurrentProfile();
     updateAccountUI();
+    if(currentProfile){ await renderNotifPanel(); subscribeToNotifications(); }
   });
 }
 
@@ -311,6 +312,7 @@ async function applyToJob(jobId){
     return;
   }
   pushToast('📨','Application sent!', `${job.title} at ${job.company.name}`);
+  await createNotification(job.company_id, '📨', `New applicant for ${job.title}`, `${user.name} applied.`);
   await rerenderCurrentView();
 }
 
@@ -820,8 +822,10 @@ async function respondToApplication(appId, status){
         await supabase.from('messages').insert({ chat_id:chat.id, sender_id:app.company_id, text:`You're connected — accepted for ${app.job.title}! Say hi 👋` });
       }
     }
+    await createNotification(app.teen_id, '🎉', `You were accepted for ${app.job.title}!`, 'Head to Messages to chat with them.');
     pushToast('✅','Applicant accepted', 'Chat unlocked for both of you');
   } else {
+    await createNotification(app.teen_id, '📪', `Not selected for ${app.job.title}`, 'Keep applying — the right one is out there.');
     pushToast('👋','Applicant declined', '');
   }
   await renderCompanyDashboard();
@@ -1049,6 +1053,7 @@ async function reviewCompany(id, approve){
   const { error } = await supabase.from('profiles').update({ approved: approve }).eq('id', id);
   logSupabaseError('reviewCompany', error);
   if(error){ pushToast('🚫','Update failed', error.message); return; }
+  await createNotification(id, approve?'✅':'🚫', approve?'Your account was approved!':'Your account was not approved', approve?'You can now post jobs.':'Contact support if you have questions.');
   pushToast(approve?'✅':'🚫', approve?'Company approved':'Company rejected', '');
   await renderAdmin();
 }
@@ -1057,13 +1062,15 @@ async function toggleCompanyFlag(id, field, value){
   logSupabaseError('toggleCompanyFlag', error);
   if(error){ pushToast('🚫','Update failed', error.message); return; }
   const labels = { approved:'Approved', verified:'Verified', featured:'Featured' };
+  if(field==='verified' && value) await createNotification(id, '✔️','You are now a Verified company!', 'Your job posts will go live instantly from now on.');
   pushToast(value?'✅':'➖', `${labels[field]} ${value?'enabled':'disabled'}`, '');
   await renderAdmin();
 }
 async function reviewJob(id, status){
-  const { error } = await supabase.from('jobs').update({ status }).eq('id', id);
+  const { data: job, error } = await supabase.from('jobs').update({ status }).eq('id', id).select().single();
   logSupabaseError('reviewJob', error);
   if(error){ pushToast('🚫','Update failed', error.message); return; }
+  if(job) await createNotification(job.company_id, status==='approved'?'✅':'🚫', status==='approved'?`${job.title} is now live!`:`${job.title} was not approved`, '');
   pushToast(status==='approved'?'✅':'🚫', status==='approved'?'Job approved':'Job rejected', '');
   await renderAdmin();
 }
@@ -1100,6 +1107,7 @@ async function warnUser(id){
   const { error } = await supabase.from('warnings').insert({ profile_id:id, message, created_by: currentUser().id });
   logSupabaseError('warnUser', error);
   if(error){ pushToast('🚫','Could not send warning', error.message); return; }
+  await createNotification(id, '⚠️', 'You received a warning from Treak', message);
   pushToast('⚠️','Warning sent', '');
   await openUserDetailModal(id, lastOpenedUserRole);
 }
@@ -1235,6 +1243,7 @@ async function openJobAdminModal(jobId){
     if(!message) return;
     const { error: wErr } = await supabase.from('warnings').insert({ profile_id:c.id, message, created_by: currentUser().id });
     if(wErr){ pushToast('🚫','Could not send warning', wErr.message); return; }
+    await createNotification(c.id, '⚠️', `You received a warning about ${j.title}`, message);
     pushToast('⚠️','Warning sent', c.name);
   });
 }
@@ -1400,10 +1409,16 @@ async function sendChatMessage(chatId, inputEl, containerEl){
   if(!text) return;
   inputEl.value = '';
   const now = new Date().toISOString();
+  const sender = currentUser();
   if(containerEl) appendChatBubble(containerEl, text, now, true); // show it instantly, don't wait on the network round-trip
-  const { error } = await supabase.from('messages').insert({ chat_id:chatId, sender_id:currentUser().id, text });
+  const { error } = await supabase.from('messages').insert({ chat_id:chatId, sender_id:sender.id, text });
   logSupabaseError('sendChatMessage', error);
-  if(error){ pushToast('🚫','Message not sent', error.message); inputEl.value = text; if(containerEl && containerEl.lastElementChild) containerEl.lastElementChild.remove(); }
+  if(error){ pushToast('🚫','Message not sent', error.message); inputEl.value = text; if(containerEl && containerEl.lastElementChild) containerEl.lastElementChild.remove(); return; }
+  const { data: chat } = await supabase.from('chats').select('teen_id, company_id, admin_id').eq('id', chatId).single();
+  if(chat){
+    const recipientId = [chat.teen_id, chat.company_id, chat.admin_id].find(id => id && id !== sender.id);
+    if(recipientId) await createNotification(recipientId, '💬', `New message from ${sender.name}`, text.slice(0,80));
+  }
 }
 
 // ------------------------------------------------------------
@@ -1532,9 +1547,48 @@ function pushToast(icon, title, sub){
   stack.appendChild(el);
   setTimeout(()=>{ el.classList.add('leaving'); setTimeout(()=>el.remove(), 320); }, 3800);
 }
-function renderNotifPanel(){ $('#notifList').innerHTML = `<div class="notif-list-empty" style="padding:20px;color:var(--text-low);font-size:13px;text-align:center;">No notifications yet.</div>`; }
-renderNotifPanel();
-$('#notifBell').addEventListener('click', e=>{ e.stopPropagation(); $('#notifPanel').classList.toggle('open'); $('#notifDot').style.display='none'; });
+
+/* Creates a real, persistent notification for someone else (or yourself) —
+   used whenever something happens that they'd want to know about. */
+async function createNotification(profileId, icon, title, body){
+  if(!profileId) return;
+  const { error } = await supabase.from('notifications').insert({ profile_id:profileId, icon, title, body: body||null });
+  logSupabaseError('createNotification', error);
+}
+
+let notificationChannel = null;
+async function renderNotifPanel(){
+  const user = currentUser();
+  if(!user){ $('#notifList').innerHTML = `<div class="notif-list-empty" style="padding:20px;color:var(--text-low);font-size:13px;text-align:center;">Log in to see notifications.</div>`; $('#notifDot').style.display='none'; return; }
+  const { data: list, error } = await supabase.from('notifications').select('*').eq('profile_id', user.id).order('created_at', {ascending:false}).limit(30);
+  logSupabaseError('renderNotifPanel', error);
+  const notifs = list || [];
+  $('#notifList').innerHTML = notifs.length ? notifs.map(n=>`
+    <div class="notif-item"><div class="notif-item-icon">${n.icon||'🔔'}</div><div><div class="notif-item-title">${n.title}${n.body?` — ${n.body}`:''}</div><div class="notif-item-time">${daysAgo(n.created_at)}</div></div></div>`).join('')
+    : `<div class="notif-list-empty" style="padding:20px;color:var(--text-low);font-size:13px;text-align:center;">No notifications yet.</div>`;
+  $('#notifDot').style.display = notifs.some(n=>!n.read) ? 'block' : 'none';
+}
+async function markNotificationsRead(){
+  const user = currentUser(); if(!user) return;
+  await supabase.from('notifications').update({ read:true }).eq('profile_id', user.id).eq('read', false);
+}
+function subscribeToNotifications(){
+  const user = currentUser(); if(!user) return;
+  if(notificationChannel) supabase.removeChannel(notificationChannel);
+  notificationChannel = supabase
+    .channel(`notifications-${user.id}`)
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'notifications', filter:`profile_id=eq.${user.id}` }, payload=>{
+      pushToast(payload.new.icon||'🔔', payload.new.title, payload.new.body||'');
+      renderNotifPanel();
+    })
+    .subscribe();
+}
+$('#notifBell').addEventListener('click', async e=>{
+  e.stopPropagation();
+  const opening = !$('#notifPanel').classList.contains('open');
+  $('#notifPanel').classList.toggle('open');
+  if(opening){ await markNotificationsRead(); $('#notifDot').style.display='none'; }
+});
 document.addEventListener('click', e=>{ if(!e.target.closest('.nav-actions')) $('#notifPanel').classList.remove('open'); });
 
 // ------------------------------------------------------------
@@ -1611,6 +1665,7 @@ if(heroVisual){
   try{
     await refreshCurrentProfile();
     updateAccountUI();
+    if(currentProfile){ await renderNotifPanel(); subscribeToNotifications(); }
     await renderCompanies();
     await renderJobs();
     console.log('%cTreak connected to Supabase ✨', 'color:#4F46E5;font-weight:bold;font-size:14px;');
