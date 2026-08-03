@@ -113,7 +113,7 @@ async function showView(name){
 }
 async function rerenderCurrentView(){
   updateAccountUI();
-  if(lastView === 'landing'){ await renderCompanies(); await renderJobs(); }
+  if(lastView === 'landing'){ await renderHeroStats(); await renderCompanies(); await renderJobs(); }
   if(lastView === 'dashboard') await renderTeenDashboard();
   if(lastView === 'company') await renderCompanyDashboard();
   if(lastView === 'admin') await renderAdmin();
@@ -181,6 +181,15 @@ function companyCardHTML(c, openJobsCount){
     </div>
   </div>`;
 }
+async function renderHeroStats(){
+  const { data, error } = await supabase.rpc('platform_stats').maybeSingle();
+  logSupabaseError('renderHeroStats', error);
+  $('#statTeenCount').dataset.count = data?.teen_count || 0;
+  $('#statJobCount').dataset.count = data?.job_count || 0;
+  $('#statCompanyCount').dataset.count = data?.company_count || 0;
+  observeCounters();
+}
+
 async function renderCompanies(){
   const { data: companies, error } = await supabase.from('profiles').select('*').eq('role','company').eq('approved', true);
   logSupabaseError('renderCompanies', error);
@@ -1666,6 +1675,7 @@ if(heroVisual){
     await refreshCurrentProfile();
     updateAccountUI();
     if(currentProfile){ await renderNotifPanel(); subscribeToNotifications(); }
+    await renderHeroStats();
     await renderCompanies();
     await renderJobs();
     console.log('%cTreak connected to Supabase ✨', 'color:#4F46E5;font-weight:bold;font-size:14px;');
